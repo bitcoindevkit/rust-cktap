@@ -84,6 +84,14 @@ just run certs
 just run read
 ```
 
+## Swift Package
+
+Swift bindings are distributed from this repo as a Swift Package. Once a
+release includes `cktapFFI.xcframework.zip`, add the repository URL in Xcode
+and use the `CKTap` product.
+
+See `cktap-swift/README.md` for local development and release steps.
+
 ## Minimum Supported Rust Version (MSRV)
 
 This library should always compile with any valid combination of features on Rust **1.85.0**.

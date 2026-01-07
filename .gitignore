@@ -19,6 +19,8 @@ DerivedData/
 *.xcframework.zip
 Info.plist
 Sources
+!cktap-swift/Sources/
+!cktap-swift/Sources/**
 lib*.a
 
 # Python ck-tap emulator

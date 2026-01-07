@@ -7,7 +7,7 @@ let package = Package(
     name: "cktap-swift",
     platforms: [
         .macOS(.v12),
-        .iOS(.v15)
+        .iOS(.v18)
     ],
     products: [
         .library(
