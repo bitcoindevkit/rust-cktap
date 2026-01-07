@@ -1,0 +1,98 @@
+name: Release Swift Package
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag (vX.Y.Z or X.Y.Z)
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release-swift:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Normalize tag
+        id: tag
+        run: |
+          TAG="${{ inputs.tag }}"
+          if [[ "${TAG}" != v* ]]; then
+            TAG="v${TAG}"
+          fi
+          echo "tag=${TAG}" >> "${GITHUB_OUTPUT}"
+
+      - name: Check for existing tag or release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${{ steps.tag.outputs.tag }}"
+          if git ls-remote --tags origin "refs/tags/${TAG}" | grep -q "${TAG}$"; then
+            echo "Tag already exists on origin: ${TAG}"
+            exit 1
+          fi
+          if gh release view "${TAG}" >/dev/null 2>&1; then
+            echo "Release already exists: ${TAG}"
+            exit 1
+          fi
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Build xcframework
+        run: bash cktap-swift/build-xcframework.sh
+
+      - name: Create archive and update checksum
+        run: bash scripts/swift_create_xcframework_archive.sh
+
+      - name: Update Package.swift tag
+        run: python3 scripts/swift_update_package_checksum.py --tag "${{ steps.tag.outputs.tag }}"
+
+      - name: Commit updated Swift files
+        run: |
+          git add Package.swift cktap-swift/Sources
+          if git diff --cached --quiet; then
+            echo "No Swift package changes to commit."
+            exit 0
+          fi
+          git commit -m "chore(swift): release ${{ steps.tag.outputs.tag }}"
+
+      - name: Create tag and push atomically
+        run: |
+          if git rev-parse "${{ steps.tag.outputs.tag }}" >/dev/null 2>&1; then
+            echo "Tag already exists: ${{ steps.tag.outputs.tag }}"
+            exit 1
+          fi
+          git tag "${{ steps.tag.outputs.tag }}"
+          git push --atomic origin HEAD "${{ steps.tag.outputs.tag }}"
+
+      - name: Create GitHub release and upload asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ steps.tag.outputs.tag }}" \
+            cktap-swift/cktapFFI.xcframework.zip \
+            --title "${{ steps.tag.outputs.tag }}" \
+            --notes "Swift bindings release ${{ steps.tag.outputs.tag }}"
+
+      - name: Cleanup failed release
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${{ steps.tag.outputs.tag }}"
+          if gh release view "${TAG}" >/dev/null 2>&1; then
+            gh release delete "${TAG}" --yes || true
+          fi
+          if git ls-remote --tags origin "refs/tags/${TAG}" | grep -q "${TAG}$"; then
+            git push --delete origin "${TAG}" || true
+          fi
