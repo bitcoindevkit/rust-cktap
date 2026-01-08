@@ -62,17 +62,20 @@ def run(new_checksum: str = None, new_tag: str = None):
         print(f"setting {current_variable_name} (JSON-serialization):")
         print(json.dumps(new_value))
 
-        regex = re.compile(rf"(let\s+{current_variable_name}\s*=\s*)(.*)")
-        match = regex.search(updated_package_file)
-        if match is None:
+        regex = re.compile(
+            rf"^(\s*let\s+{current_variable_name}\s*=\s*).*$",
+            re.MULTILINE,
+        )
+        updated_package_file, replacements = regex.subn(
+            rf'\1"{new_value}"',
+            updated_package_file,
+        )
+        if replacements != 1:
             print(
-                f"Failed to find {current_variable_name} in Package.swift.",
+                f"Failed to update {current_variable_name} in Package.swift.",
                 file=sys.stderr,
             )
             sys.exit(1)
-
-        previous_value = match.group(2)
-        updated_package_file = updated_package_file.replace(previous_value, f'"{new_value}"')
 
     with open(package_file_path, "w") as package_file_handle:
         package_file_handle.write(updated_package_file)

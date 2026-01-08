@@ -29,6 +29,13 @@ jobs:
           fi
           echo "tag=${TAG}" >> "${GITHUB_OUTPUT}"
 
+      - name: Ensure workflow runs on a branch
+        run: |
+          if [[ "${GITHUB_REF_TYPE}" != "branch" ]]; then
+            echo "This workflow must run on a branch ref."
+            exit 1
+          fi
+
       - name: Check for existing tag or release
         env:
           GH_TOKEN: ${{ github.token }}
