@@ -73,12 +73,18 @@ jobs:
         run: cp Cargo.toml.MSRV Cargo.toml
       - name: Install PCSC development libraries
         run: |
-          sudo apt-get update
-          sudo apt-get install -y libpcsclite-dev swig
+          sudo apt-get update -y
+          sudo apt-get install -y swig libpcsclite-dev
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
       - name: Test
         run: |
+          cd ${{ github.workspace }}
           python3 -m venv emulator_env
           source emulator_env/bin/activate
+          pip install -U pip wheel
           pip install -r coinkite/coinkite-tap-proto/emulator/requirements.txt
           cargo test -p rust-cktap --features emulator
 
