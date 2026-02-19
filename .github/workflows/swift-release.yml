@@ -56,7 +56,8 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
       - name: Build xcframework
-        run: bash cktap-swift/build-xcframework.sh
+        working-directory: cktap-swift
+        run: bash build-xcframework.sh
 
       - name: Create archive and update checksum
         run: bash scripts/swift_create_xcframework_archive.sh
