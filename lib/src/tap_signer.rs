@@ -250,6 +250,9 @@ pub trait TapSignerShared: Authentication {
         // set most significant bit to 1 to represent hardened path steps
         let path = path.iter().map(|p| p ^ (1 << 31)).collect::<Vec<_>>();
         let app_nonce = crate::rand_nonce();
+        // capture card_nonce BEFORE transmit — the card signs with this nonce,
+        // and the response contains a NEW nonce for the next command
+        let card_nonce = *self.card_nonce();
         let (_, epubkey, xcvc) = self.calc_ekeys_xcvc(cvc, DeriveCommand::name());
         let cmd = DeriveCommand::for_tapsigner(app_nonce, path, epubkey, xcvc);
         let derive_response: DeriveResponse = transmit(self.transport(), &cmd).await?;
@@ -261,25 +264,25 @@ pub trait TapSignerShared: Authentication {
             None => master_pubkey,
         };
 
-        // TODO FIX currently signature validation only works if no derivation path is used
-        if pubkey == master_pubkey {
-            let card_nonce = self.card_nonce();
-            let sig = &derive_response.sig;
+        // Verify signature: per the Coinkite protocol the card always signs with
+        // the master private key, regardless of whether a derivation path was used.
+        // Message: "OPENDIME" || card_nonce (pre-command) || app_nonce || chain_code
+        let sig = &derive_response.sig;
 
-            let mut message_bytes: Vec<u8> = Vec::new();
-            message_bytes.extend("OPENDIME".as_bytes());
-            message_bytes.extend(card_nonce);
-            message_bytes.extend(app_nonce);
-            message_bytes.extend(&derive_response.chain_code);
+        let mut message_bytes: Vec<u8> = Vec::new();
+        message_bytes.extend("OPENDIME".as_bytes());
+        message_bytes.extend(card_nonce);
+        message_bytes.extend(app_nonce);
+        message_bytes.extend(&derive_response.chain_code);
 
-            let message_bytes_hash = sha256::Hash::hash(message_bytes.as_slice());
-            let message = Message::from_digest(message_bytes_hash.to_byte_array());
+        let message_bytes_hash = sha256::Hash::hash(message_bytes.as_slice());
+        let message = Message::from_digest(message_bytes_hash.to_byte_array());
 
-            let signature = Signature::from_compact(sig)?;
+        let signature = Signature::from_compact(sig)?;
 
-            self.secp()
-                .verify_ecdsa(&message, &signature, &master_pubkey.inner)?;
-        }
+        self.secp()
+            .verify_ecdsa(&message, &signature, &master_pubkey.inner)?;
+
         Ok(pubkey)
     }
 
