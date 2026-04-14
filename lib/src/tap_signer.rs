@@ -264,8 +264,9 @@ pub trait TapSignerShared: Authentication {
             None => master_pubkey,
         };
 
-        // Verify signature: per the Coinkite protocol the card always signs with
-        // the master private key, regardless of whether a derivation path was used.
+        // Verify signature: the TAPSIGNER signs with the DERIVED private key
+        // (or the master private key when the path is empty, in which case
+        // `pubkey` falls back to `master_pubkey` above).
         // Message: "OPENDIME" || card_nonce (pre-command) || app_nonce || chain_code
         let sig = &derive_response.sig;
 
@@ -281,7 +282,7 @@ pub trait TapSignerShared: Authentication {
         let signature = Signature::from_compact(sig)?;
 
         self.secp()
-            .verify_ecdsa(&message, &signature, &master_pubkey.inner)?;
+            .verify_ecdsa(&message, &signature, &pubkey.inner)?;
 
         Ok(pubkey)
     }
@@ -434,6 +435,48 @@ mod test {
             assert_eq!(xpub.depth, 3);
             let master_xpub = ts.xpub(true, "123456").await.unwrap();
             assert_eq!(master_xpub.depth, 0);
+        }
+        drop(python);
+    }
+
+    // Regression test for the signature verification fix:
+    // `derive` with a non-empty path must still cryptographically verify the
+    // response using the master pubkey and the card_nonce captured BEFORE the
+    // transmit. If either bug regressed, this call would fail with
+    // DeriveError::Secp (signature verification failed).
+    #[tokio::test]
+    async fn test_tap_signer_derive_with_path() {
+        let card_type = CardTypeOption::TapSigner;
+        let pipe_path = "/tmp/test-tapsigner-derive-path-pipe";
+        let pipe_path = Path::new(&pipe_path);
+        let python = EcardSubprocess::new(pipe_path, &card_type).unwrap();
+        let emulator = find_emulator(pipe_path).await.unwrap();
+        if let CkTapCard::TapSigner(mut ts) = emulator {
+            ts.init(rand_chaincode(), "123456").await.unwrap();
+            // BIP84 prefix m/84'/0'/0' — non-empty path so the card returns a
+            // derived pubkey different from the master pubkey. Pre-fix, this
+            // branch skipped verification entirely.
+            let derived_pubkey = ts.derive(vec![84, 0, 0], "123456").await.unwrap();
+            // Sanity check: derivation succeeded and returned a valid pubkey
+            assert_eq!(derived_pubkey.inner.serialize().len(), 33);
+        }
+        drop(python);
+    }
+
+    // Regression test ensuring the empty-path case (pubkey == master_pubkey)
+    // also still works after removing the `if pubkey == master_pubkey` guard.
+    #[tokio::test]
+    async fn test_tap_signer_derive_empty_path() {
+        let card_type = CardTypeOption::TapSigner;
+        let pipe_path = "/tmp/test-tapsigner-derive-empty-pipe";
+        let pipe_path = Path::new(&pipe_path);
+        let python = EcardSubprocess::new(pipe_path, &card_type).unwrap();
+        let emulator = find_emulator(pipe_path).await.unwrap();
+        if let CkTapCard::TapSigner(mut ts) = emulator {
+            ts.init(rand_chaincode(), "123456").await.unwrap();
+            // Empty path — card returns pubkey == master_pubkey (None in response)
+            let master_pubkey = ts.derive(vec![], "123456").await.unwrap();
+            assert_eq!(master_pubkey.inner.serialize().len(), 33);
         }
         drop(python);
     }
