@@ -1,0 +1,5 @@
+[bindings.kotlin]
+package_name = "com.coinkite.cktap"
+cdylib_name = "cktap_ffi"
+android = true
+android_cleaner = true

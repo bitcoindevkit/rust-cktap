@@ -1,0 +1,7 @@
+[bindings.kotlin]
+package_name = "com.coinkite.cktap"
+cdylib_name = "cktap_ffi"
+
+[bindings.swift]
+module_name = "CKTap"
+cdylib_name = "cktap_ffi"

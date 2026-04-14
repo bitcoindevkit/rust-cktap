@@ -27,3 +27,12 @@ lib*.a
 # Python ck-tap emulator
 /emulator_env/
 *.log
+
+# Android
+cktap-android/.gradle/
+cktap-android/build/
+cktap-android/lib/build/
+cktap-android/lib/src/main/jniLibs/
+cktap-android/lib/src/main/kotlin/
+cktap-android/local.properties
+*.so

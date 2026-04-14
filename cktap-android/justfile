@@ -1,0 +1,39 @@
+[group("Repo")]
+[doc("Default command; list all available commands.")]
+@list:
+  just --list --unsorted
+
+[group("Repo")]
+[doc("Open repo on GitHub in your default browser.")]
+repo:
+  open https://github.com/bitcoindevkit/rust-cktap
+
+[group("Build")]
+[doc("Build the library for given ARCH.")]
+build ARCH="macos-aarch64":
+  bash ./scripts/release/build-release-{{ARCH}}.sh
+
+[group("Build")]
+[doc("Build the library for a single architecture in development mode.")]
+build-dev:
+  bash ./scripts/dev/build-dev-macos-aarch64.sh
+
+[group("Build")]
+[doc("List available architectures for the build command.")]
+@list-architectures:
+    echo "Available architectures:"
+    echo "    - macos-aarch64"
+
+[group("Build")]
+[doc("Remove all caches and previous build directories to start from scratch.")]
+clean:
+  rm -rf ../target/
+  rm -rf ./build/
+  rm -rf ./lib/build/
+  rm -rf ./lib/src/main/kotlin/com/coinkite/cktap/*
+  rm -rf ./lib/src/main/jniLibs/*
+
+[group("Test")]
+[doc("Run all connected device tests.")]
+test:
+  ./gradlew connectedAndroidTest
