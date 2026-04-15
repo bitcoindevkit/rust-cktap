@@ -15,4 +15,8 @@ opt-level = 'z'
 lto = true
 codegen-units = 1
 panic = "abort"
-strip = true
+# NOTE: do not set `strip = true` here. uniffi-bindgen's `--library` mode reads
+# UNIFFI_META_* symbols from the compiled .so to discover the interface, and
+# stripping at compile time removes them. Strip the copies that ship in the
+# Android AAR explicitly (e.g. with `llvm-strip`) after bindings have been
+# generated — see cktap-android/scripts/release/build-release-*.sh.

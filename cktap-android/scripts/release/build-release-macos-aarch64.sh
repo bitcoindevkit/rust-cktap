@@ -37,10 +37,18 @@ cp ../target/$COMPILATION_TARGET_ARM64_V8A/release-smaller/$LIB_NAME ../cktap-an
 cp ../target/$COMPILATION_TARGET_ARMEABI_V7A/release-smaller/$LIB_NAME ../cktap-android/lib/src/main/jniLibs/$RESOURCE_DIR_ARMEABI_V7A/
 cp ../target/$COMPILATION_TARGET_X86_64/release-smaller/$LIB_NAME ../cktap-android/lib/src/main/jniLibs/$RESOURCE_DIR_X86_64/
 
-# Generate Kotlin bindings using cktap-uniffi-bindgen with android-specific config
+# Generate Kotlin bindings using cktap-uniffi-bindgen with android-specific config.
+# This must run BEFORE stripping, because `--library` mode reads UNIFFI_META_*
+# symbols from the .so to discover the interface.
 cargo run --package ${FFI_PKG_NAME} --bin cktap-uniffi-bindgen generate \
     --library ../target/$COMPILATION_TARGET_ARM64_V8A/release-smaller/$LIB_NAME \
     --language kotlin \
     --out-dir ../cktap-android/lib/src/main/kotlin/ \
     --config uniffi-android.toml \
     --no-format
+
+# Strip the copies shipped in the AAR to keep the artifact small. The originals
+# under target/ are left intact so bindgen can be re-run without rebuilding.
+llvm-strip ../cktap-android/lib/src/main/jniLibs/$RESOURCE_DIR_ARM64_V8A/$LIB_NAME
+llvm-strip ../cktap-android/lib/src/main/jniLibs/$RESOURCE_DIR_ARMEABI_V7A/$LIB_NAME
+llvm-strip ../cktap-android/lib/src/main/jniLibs/$RESOURCE_DIR_X86_64/$LIB_NAME

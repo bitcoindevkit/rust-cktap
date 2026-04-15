@@ -38,6 +38,34 @@ tasks.withType<KotlinCompile> {
     }
 }
 
+// Fail fast if the Rust/UniFFI pipeline hasn't populated the generated Kotlin
+// sources and native libraries. Without this, Gradle will happily assemble and
+// publish an empty AAR from a clean checkout — see
+// `scripts/release/build-release-*.sh` (or `scripts/dev/build-dev-*.sh`) for the
+// step that must run first.
+val verifyFfiArtifacts by tasks.registering {
+    group = "verification"
+    description = "Verifies generated Kotlin bindings and jniLibs exist before assembling the AAR."
+    doLast {
+        val kotlinSrc = file("src/main/kotlin")
+        val jniLibs = file("src/main/jniLibs")
+        val hasBindings = kotlinSrc.walkTopDown().any { it.isFile && it.extension == "kt" }
+        val hasNative = jniLibs.walkTopDown().any { it.isFile && it.name == "libcktap_ffi.so" }
+        if (!hasBindings || !hasNative) {
+            throw GradleException(
+                "Missing FFI artifacts. Run `just build <arch>` (release) or " +
+                    "`just build-dev` from cktap-android/ before assembling or publishing.\n" +
+                    "  kotlin bindings present: $hasBindings\n" +
+                    "  libcktap_ffi.so present:  $hasNative"
+            )
+        }
+    }
+}
+
+tasks.matching { it.name == "preBuild" }.configureEach {
+    dependsOn(verifyFfiArtifacts)
+}
+
 java {
     toolchain {
         languageVersion.set(JavaLanguageVersion.of(17))
