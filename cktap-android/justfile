@@ -6,7 +6,12 @@
 [group("Repo")]
 [doc("Open repo on GitHub in your default browser.")]
 repo:
-  open https://github.com/bitcoindevkit/rust-cktap
+  open https://github.com/notmandatory/rust-cktap
+
+[group("Repo")]
+[doc("Build the API docs.")]
+docs:
+  ./gradlew :lib:dokkaGeneratePublicationHtml
 
 [group("Build")]
 [doc("Build the library for given ARCH.")]
@@ -30,8 +35,19 @@ clean:
   rm -rf ../target/
   rm -rf ./build/
   rm -rf ./lib/build/
+  rm -rf ./lib/src/main/kotlin/org/bitcoindevkit/cktap/*
   rm -rf ./lib/src/main/kotlin/com/coinkite/cktap/*
   rm -rf ./lib/src/main/jniLibs/*
+
+[group("Publish")]
+[doc("Publish the library to your local Maven repository (no signing, no credentials needed).")]
+publish-local:
+  ./gradlew publishToMavenLocal -P localBuild
+
+[group("Publish")]
+[doc("Publish the library to Maven Central (requires signing key and Sonatype credentials).")]
+publish-central:
+  ./gradlew publishAndReleaseToMavenCentral
 
 [group("Test")]
 [doc("Run all connected device tests.")]

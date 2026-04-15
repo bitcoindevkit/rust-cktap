@@ -30,9 +30,15 @@ lib*.a
 
 # Android
 cktap-android/.gradle/
+cktap-android/.kotlin/
 cktap-android/build/
 cktap-android/lib/build/
 cktap-android/lib/src/main/jniLibs/
 cktap-android/lib/src/main/kotlin/
 cktap-android/local.properties
 *.so
+
+# Credentials / signing (must never be committed)
+secring.gpg
+*.asc
+*.gpg
