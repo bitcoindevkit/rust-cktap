@@ -3,6 +3,7 @@
 
 extern crate core;
 
+pub use bitcoin;
 pub use bitcoin::Network;
 pub use bitcoin::bip32::ChainCode;
 pub use bitcoin::key::FromSliceError;
