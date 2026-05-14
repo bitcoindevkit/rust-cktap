@@ -336,6 +336,26 @@ impl From<rust_cktap::PsbtParseError> for SignPsbtError {
     }
 }
 
+/// Errors returned by the `sign_digest` FFI entry point.
+#[derive(Clone, Debug, PartialEq, Eq, thiserror::Error, uniffi::Error)]
+pub enum SignDigestError {
+    #[error(transparent)]
+    CkTap {
+        #[from]
+        err: CkTapError,
+    },
+    #[error("digest must be exactly 32 bytes, was {len} bytes")]
+    InvalidDigestLength { len: u32 },
+    #[error("failed to derive recovery id for signature: {msg}")]
+    RecoveryId { msg: String },
+}
+
+impl From<rust_cktap::CkTapError> for SignDigestError {
+    fn from(value: rust_cktap::CkTapError) -> Self {
+        SignDigestError::CkTap { err: value.into() }
+    }
+}
+
 /// Errors returned by the `change` command.
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error, uniffi::Error)]
 pub enum ChangeError {

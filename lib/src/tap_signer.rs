@@ -359,6 +359,21 @@ impl TapSigner {
         })
     }
 
+    /// Sign an arbitrary 32-byte digest with the key derived at `sub_path`.
+    ///
+    /// Thin public wrapper around the [`TapSignerShared::sign`] trait method. Useful for
+    /// building higher-level flows such as BIP-137 "Bitcoin Signed Message" or generic
+    /// proof-of-key challenges, which compute the digest off-card and ask the TAPSIGNER to
+    /// sign it.
+    pub async fn sign_digest(
+        &mut self,
+        digest: [u8; 32],
+        sub_path: Vec<u32>,
+        cvc: &str,
+    ) -> Result<SignResponse, CkTapError> {
+        <Self as TapSignerShared>::sign(self, digest, sub_path, cvc).await
+    }
+
     /// Backup the current card, the backup is encrypted with the "Backup Password" on the back of the card
     pub async fn backup(&mut self, cvc: &str) -> Result<Vec<u8>, ChangeError> {
         let (_, epubkey, xcvc) = self.calc_ekeys_xcvc(cvc, "backup");
