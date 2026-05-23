@@ -14,11 +14,16 @@ RELDIR="release-smaller"
 FFI_LIB_NAME="cktap_ffi"
 FFI_PKG_NAME="cktap-ffi"
 
+# Name of the Swift module produced by uniffi-bindgen. It is derived from the
+# UniFFI namespace declared in the Rust crate (`CKTap`), not from the cargo lib
+# name, so it stays in PascalCase regardless of `FFI_LIB_NAME`.
+SWIFT_MODULE_NAME="CKTapFFI"
+
 DYLIB_FILENAME="lib${FFI_LIB_NAME}.dylib"
-HEADER_BASENAME="${FFI_LIB_NAME}FFI"
-HEADER_FILENAME="${HEADER_BASENAME}.h"
+HEADER_BASENAME="${SWIFT_MODULE_NAME}"
+HEADER_FILENAME="${SWIFT_MODULE_NAME}.h"
 MODULEMAP_FILENAME="module.modulemap"
-GENERATED_MODULEMAP="${FFI_LIB_NAME}FFI.modulemap"
+GENERATED_MODULEMAP="${SWIFT_MODULE_NAME}.modulemap"
 
 NAME="cktapFFI"
 STATIC_LIB_FILENAME="lib${FFI_LIB_NAME}.a"
@@ -72,27 +77,27 @@ lipo ${TARGETDIR}/aarch64-apple-darwin/${RELDIR}/${STATIC_LIB_FILENAME} \
 
 #cd cktap-swift || exit
 
-# Unique subdir to prevent collisions
-UNIQUE_HEADER_SUBDIR="${NEW_HEADER_DIR}/${HEADER_BASENAME}"
-
-# Remove any previously generated headers to avoid duplicate module.modulemap files
+# Remove any previously generated headers to avoid duplicate module.modulemap files.
+# The header and modulemap must live at the TOP of the headers dir (not in a
+# subdirectory) so Xcode/SPM auto-discover the module when bundling the xcframework
+# — the xcframework Info.plist exposes `HeadersPath = "Headers"`, and clang only
+# looks for `Headers/module.modulemap`, not `Headers/<subdir>/module.modulemap`.
 rm -rf "${NEW_HEADER_DIR:?}"/*
+mkdir -p "${NEW_HEADER_DIR}"
 
-mkdir -p "${UNIQUE_HEADER_SUBDIR}"
-
-# Move the header file into the unique subdirectory
+# Move the header file into the headers dir.
 if [ -f "Sources/CKTap/${HEADER_FILENAME}" ]; then
-    mv "Sources/CKTap/${HEADER_FILENAME}" "${UNIQUE_HEADER_SUBDIR}/"
+    mv "Sources/CKTap/${HEADER_FILENAME}" "${NEW_HEADER_DIR}/${HEADER_FILENAME}"
 else
     echo "Warning: Could not find header file Sources/CKTap/${HEADER_FILENAME}"
 fi
 
-# Handle modulemap using the correct filename pattern, placed inside unique subdirectory
+# Handle modulemap using the correct filename pattern.
 if [ -f "Sources/CKTap/${GENERATED_MODULEMAP}" ]; then
-    mv "Sources/CKTap/${GENERATED_MODULEMAP}" "${UNIQUE_HEADER_SUBDIR}/${MODULEMAP_FILENAME}"
+    mv "Sources/CKTap/${GENERATED_MODULEMAP}" "${NEW_HEADER_DIR}/${MODULEMAP_FILENAME}"
 else
     echo "Creating a standard module map."
-    echo "framework module ${NAME} { umbrella header \"${HEADER_FILENAME}\" export * }" > "${UNIQUE_HEADER_SUBDIR}/${MODULEMAP_FILENAME}"
+    echo "module ${SWIFT_MODULE_NAME} { umbrella header \"${HEADER_FILENAME}\" export * }" > "${NEW_HEADER_DIR}/${MODULEMAP_FILENAME}"
 fi
 
 
