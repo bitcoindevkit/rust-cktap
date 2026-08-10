@@ -48,6 +48,11 @@ impl TryFrom<secp256k1::PublicKey> for FactoryRootKey {
 }
 
 impl FactoryRootKey {
+    /// Return whether this is the production Coinkite factory root key.
+    pub const fn is_production(&self) -> bool {
+        matches!(self, Self::Pub(_))
+    }
+
     pub fn name(&self) -> String {
         match &self {
             FactoryRootKey::Pub(_) => "Root Factory Certificate".to_string(),
@@ -271,15 +276,31 @@ pub trait Wait: Authentication {
 
 #[async_trait]
 pub trait Certificate: Read {
+    /// Verify card authenticity against the production Coinkite factory root.
+    async fn check_production_certificate(&mut self) -> Result<(), CertsError> {
+        let root = self.check_certificate().await?;
+
+        if root.is_production() {
+            return Ok(());
+        }
+
+        Err(CertsError::InvalidRootCert(
+            "development factory root".to_string(),
+        ))
+    }
+
     async fn check_certificate(&mut self) -> Result<FactoryRootKey, CertsError> {
         let app_nonce = rand_nonce();
         let card_nonce = *self.card_nonce();
 
         let certs_cmd = CertsCommand::default();
         let certs_response: CertsResponse = transmit(self.transport(), &certs_cmd).await?;
+        let cert_chain = CertificateChain::try_from(certs_response.cert_chain())?;
 
         let check_cmd = CheckCommand::new(app_nonce);
         let check_response: CheckResponse = transmit(self.transport(), &check_cmd).await?;
+        let signature = parse_auth_signature(&check_response.auth_sig)?;
+
         self.set_card_nonce(check_response.card_nonce);
 
         let slot_pubkey = self.slot_pubkey().await?;
@@ -299,35 +320,125 @@ pub trait Certificate: Read {
         let message = Message::from_digest(message_bytes_hash.to_byte_array());
 
         // verify the signature with the message and pubkey
-        let signature = Signature::from_compact(check_response.auth_sig.as_slice())
-            .expect("Failed to construct ECDSA signature from check response");
         self.secp()
             .verify_ecdsa(&message, &signature, &self.pubkey().inner)?;
 
-        let mut pubkey = *self.pubkey();
-        for sig in &certs_response.cert_chain() {
-            // BIP-137: https://github.com/bitcoin/bips/blob/master/bip-0137.mediawiki
-            let subtract_by = match sig[0] {
-                27..=30 => 27, // P2PKH uncompressed
-                31..=34 => 31, // P2PKH compressed
-                35..=38 => 35, // Segwit P2SH
-                39..=42 => 39, // Segwit Bech32
-                _ => panic!("Unrecognized BIP-137 address"),
-            };
-            let rec_id = RecoveryId::from_i32((sig[0] as i32) - subtract_by)?;
-            let (_, sig) = sig.split_at(1);
-            let result = RecoverableSignature::from_compact(sig, rec_id);
-            let rec_sig = result?;
-            let pubkey_hash = sha256::Hash::hash(&pubkey.inner.serialize());
-            let md = Message::from_digest(pubkey_hash.to_byte_array());
-            let result = self.secp().recover_ecdsa(&md, &rec_sig);
-            pubkey = PublicKey::new(result?);
-        }
-
-        FactoryRootKey::try_from(pubkey.inner)
+        let root_pubkey = cert_chain.recover_root(self.secp(), *self.pubkey())?;
+        FactoryRootKey::try_from(root_pubkey.inner)
     }
 
     async fn slot_pubkey(&mut self) -> Result<Option<PublicKey>, ReadError>;
+}
+
+#[derive(Debug)]
+struct CertificateChain(Vec<RecoverableSignature>);
+
+impl TryFrom<Vec<Vec<u8>>> for CertificateChain {
+    type Error = CertsError;
+
+    fn try_from(certificates: Vec<Vec<u8>>) -> Result<Self, Self::Error> {
+        if certificates.is_empty() {
+            return Err(bitcoin::secp256k1::Error::InvalidSignature.into());
+        }
+
+        let signatures = certificates
+            .into_iter()
+            .map(|certificate| parse_certificate_signature(&certificate))
+            .collect::<Result<_, _>>()?;
+
+        Ok(Self(signatures))
+    }
+}
+
+impl CertificateChain {
+    fn recover_root(
+        &self,
+        secp: &Secp256k1<All>,
+        card_pubkey: PublicKey,
+    ) -> Result<PublicKey, CertsError> {
+        self.0.iter().try_fold(card_pubkey, |pubkey, signature| {
+            let pubkey_hash = sha256::Hash::hash(&pubkey.inner.serialize());
+            let message = Message::from_digest(pubkey_hash.to_byte_array());
+            let recovered = secp.recover_ecdsa(&message, signature)?;
+
+            Ok(PublicKey::new(recovered))
+        })
+    }
+}
+
+fn parse_auth_signature(signature: &[u8]) -> Result<Signature, CertsError> {
+    Ok(Signature::from_compact(signature)?)
+}
+
+fn parse_certificate_signature(certificate: &[u8]) -> Result<RecoverableSignature, CertsError> {
+    let (header, compact_signature) = certificate
+        .split_first()
+        .ok_or(bitcoin::secp256k1::Error::InvalidSignature)?;
+
+    // BIP-137: https://github.com/bitcoin/bips/blob/master/bip-0137.mediawiki
+    let recovery_id = match header {
+        27..=30 => header - 27, // P2PKH uncompressed
+        31..=34 => header - 31, // P2PKH compressed
+        35..=38 => header - 35, // Segwit P2SH
+        39..=42 => header - 39, // Segwit Bech32
+        _ => return Err(bitcoin::secp256k1::Error::InvalidRecoveryId.into()),
+    };
+    let recovery_id = RecoveryId::from_i32(i32::from(recovery_id))?;
+
+    Ok(RecoverableSignature::from_compact(
+        compact_signature,
+        recovery_id,
+    )?)
+}
+
+#[cfg(test)]
+mod certificate_tests {
+    use super::*;
+
+    #[test]
+    fn rejects_invalid_auth_signature_length() {
+        let error = parse_auth_signature(&[]).unwrap_err();
+        assert!(matches!(
+            error,
+            CertsError::Secp256k1(bitcoin::secp256k1::Error::InvalidSignature)
+        ));
+    }
+
+    #[test]
+    fn rejects_empty_certificate_chain() {
+        let error = CertificateChain::try_from(Vec::new()).unwrap_err();
+        assert!(matches!(
+            error,
+            CertsError::Secp256k1(bitcoin::secp256k1::Error::InvalidSignature)
+        ));
+    }
+
+    #[test]
+    fn rejects_empty_certificate_signature() {
+        let error = parse_certificate_signature(&[]).unwrap_err();
+        assert!(matches!(
+            error,
+            CertsError::Secp256k1(bitcoin::secp256k1::Error::InvalidSignature)
+        ));
+    }
+
+    #[test]
+    fn rejects_invalid_certificate_header() {
+        let error = parse_certificate_signature(&[0; 65]).unwrap_err();
+        assert!(matches!(
+            error,
+            CertsError::Secp256k1(bitcoin::secp256k1::Error::InvalidRecoveryId)
+        ));
+    }
+
+    #[test]
+    fn rejects_invalid_certificate_signature_length() {
+        let error = parse_certificate_signature(&[31; 64]).unwrap_err();
+        assert!(matches!(
+            error,
+            CertsError::Secp256k1(bitcoin::secp256k1::Error::InvalidSignature)
+        ));
+    }
 }
 
 #[async_trait]

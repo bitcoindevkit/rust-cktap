@@ -13,7 +13,6 @@ use crate::sats_card::SatsCard;
 use crate::sats_chip::SatsChip;
 use crate::tap_signer::TapSigner;
 use futures::lock::Mutex;
-use rust_cktap::shared::FactoryRootKey;
 use rust_cktap::shared::{Certificate, Read};
 use std::fmt::Debug;
 use std::sync::Arc;
@@ -77,10 +76,7 @@ async fn read(
 }
 
 async fn check_cert(card: &mut (impl Certificate + Send + Sync)) -> Result<(), CertsError> {
-    match card.check_certificate().await? {
-        FactoryRootKey::Pub(_) => Ok(()),
-        FactoryRootKey::Dev(_) => Err(CertsError::InvalidRootCert {
-            msg: "Developer Cert Found".to_string(),
-        }),
-    }
+    card.check_production_certificate()
+        .await
+        .map_err(CertsError::from)
 }
