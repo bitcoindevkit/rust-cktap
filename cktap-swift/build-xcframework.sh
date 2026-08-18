@@ -60,6 +60,14 @@ cargo run --package ${FFI_PKG_NAME} --bin cktap-uniffi-bindgen generate \
     --out-dir ./Sources/CKTap \
     --no-format
 
+# uniffi 0.32 uses the configured module name for generated Swift artifacts
+if [ -f "Sources/CKTap/CKTap.swift" ]; then
+    mv "Sources/CKTap/CKTap.swift" "Sources/CKTap/cktap_ffi.swift"
+    HEADER_BASENAME="CKTapFFI"
+    HEADER_FILENAME="${HEADER_BASENAME}.h"
+    GENERATED_MODULEMAP="CKTapFFI.modulemap"
+fi
+
 # Create universal library for simulator targets
 lipo ${TARGETDIR}/aarch64-apple-ios-sim/${RELDIR}/${STATIC_LIB_FILENAME} \
      ${TARGETDIR}/x86_64-apple-ios/${RELDIR}/${STATIC_LIB_FILENAME} \
@@ -110,4 +118,3 @@ xcodebuild -create-xcframework \
     -output "${OUTDIR}/${NAME}.xcframework"
 
 echo "Building Swift package completed."
-
