@@ -6,7 +6,7 @@ manifest used during development.
 ## Local development
 
 - Run `just build` (or `./build-xcframework.sh`) to regenerate
-  `Sources/CKTap/cktap_ffi.swift` and `cktapFFI.xcframework`.
+  `Sources/CKTap/CKTap.swift` and `cktapFFI.xcframework`.
 - Run `just test` to execute Swift tests.
 
 ## Publishing the Swift package
