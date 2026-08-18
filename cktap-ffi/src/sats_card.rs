@@ -8,7 +8,7 @@ use crate::error::{
 use futures::lock::Mutex;
 use rust_cktap::descriptor::Wpkh;
 use rust_cktap::shared::{Authentication, Nfc, Read, Wait};
-use rust_cktap::{Psbt, rand_chaincode};
+use rust_cktap::{Cvc, Psbt, rand_chaincode};
 use std::str::FromStr;
 
 #[derive(uniffi::Object)]
@@ -81,6 +81,7 @@ impl SatsCard {
 
     /// Open a new slot, it will be the current active but must be unused (no address)
     pub async fn new_slot(&self, cvc: String) -> Result<u8, DeriveError> {
+        let cvc = Cvc::try_from(cvc).map_err(CkTapError::from)?;
         let mut card = self.0.lock().await;
         let (active_slot, _) = card.slots;
         let new_slot_chain_code = rand_chaincode();
@@ -99,6 +100,7 @@ impl SatsCard {
 
     /// Unseal currently active slot
     pub async fn unseal(&self, cvc: String) -> Result<SlotDetails, UnsealError> {
+        let cvc = Cvc::try_from(cvc).map_err(CkTapError::from)?;
         let mut card = self.0.lock().await;
         let active_slot = card.slots.0;
         let (privkey, pubkey) = card.unseal(active_slot, &cvc).await?;
@@ -112,6 +114,10 @@ impl SatsCard {
     /// This is only needed for debugging, use `sign_psbt` for signing
     /// If no CVC given only pubkey and pubkey descriptor returned.
     pub async fn dump(&self, slot: u8, cvc: Option<String>) -> Result<SlotDetails, DumpError> {
+        let cvc = cvc
+            .map(Cvc::try_from)
+            .transpose()
+            .map_err(CkTapError::from)?;
         let mut card = self.0.lock().await;
         let (privkey, pubkey) = card.dump(slot, cvc).await?;
         Ok(SlotDetails {
@@ -128,6 +134,7 @@ impl SatsCard {
         psbt: String,
         cvc: String,
     ) -> Result<String, SignPsbtError> {
+        let cvc = Cvc::try_from(cvc).map_err(CkTapError::from)?;
         let mut card = self.0.lock().await;
         let psbt = Psbt::from_str(&psbt)?;
         let signed_psbt = card.sign_psbt(slot, psbt, &cvc).await?;

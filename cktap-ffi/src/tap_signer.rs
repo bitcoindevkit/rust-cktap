@@ -8,7 +8,7 @@ use crate::{check_cert, read};
 use futures::lock::Mutex;
 use rust_cktap::shared::{Authentication, Nfc, Wait};
 use rust_cktap::tap_signer::TapSignerShared;
-use rust_cktap::{Psbt, rand_chaincode};
+use rust_cktap::{Cvc, Psbt, rand_chaincode};
 use std::str::FromStr;
 
 #[derive(uniffi::Object)]
@@ -58,23 +58,28 @@ impl TapSigner {
     }
 
     pub async fn init(&self, cvc: String) -> Result<(), CkTapError> {
+        let cvc = Cvc::try_from(cvc).map_err(CkTapError::from)?;
         let mut card = self.0.lock().await;
         init(&mut *card, cvc).await
     }
 
     pub async fn sign_psbt(&self, psbt: String, cvc: String) -> Result<String, SignPsbtError> {
+        let cvc = Cvc::try_from(cvc).map_err(CkTapError::from)?;
         let mut card = self.0.lock().await;
         let psbt = sign_psbt(&mut *card, psbt, cvc).await?;
         Ok(psbt)
     }
 
     pub async fn derive(&self, path: Vec<u32>, cvc: String) -> Result<String, DeriveError> {
+        let cvc = Cvc::try_from(cvc).map_err(CkTapError::from)?;
         let mut card = self.0.lock().await;
         let pubkey = derive(&mut *card, path, cvc).await?;
         Ok(pubkey)
     }
 
     pub async fn change(&self, new_cvc: String, cvc: String) -> Result<(), ChangeError> {
+        let new_cvc = Cvc::try_from(new_cvc).map_err(CkTapError::from)?;
+        let cvc = Cvc::try_from(cvc).map_err(CkTapError::from)?;
         let mut card = self.0.lock().await;
         change(&mut *card, new_cvc, cvc).await?;
         Ok(())
@@ -87,6 +92,7 @@ impl TapSigner {
     }
 
     pub async fn xpub(&self, master: bool, cvc: String) -> Result<String, XpubError> {
+        let cvc = Cvc::try_from(cvc).map_err(CkTapError::from)?;
         let mut card = self.0.lock().await;
         let xpub = card.xpub(master, &cvc).await?;
         Ok(xpub.to_string())
@@ -96,7 +102,7 @@ impl TapSigner {
 /// Initialize a new TAPSIGNER card.
 pub async fn init(
     card: &mut (impl TapSignerShared + Send + Sync),
-    cvc: String,
+    cvc: Cvc,
 ) -> Result<(), CkTapError> {
     let chain_code = rand_chaincode();
     card.init(chain_code, &cvc).await.map_err(CkTapError::from)
@@ -108,7 +114,7 @@ pub async fn init(
 pub async fn sign_psbt(
     card: &mut (impl TapSignerShared + Send + Sync),
     psbt: String,
-    cvc: String,
+    cvc: Cvc,
 ) -> Result<String, SignPsbtError> {
     let unsigned_psbt = Psbt::from_str(&psbt)?;
     let psbt = card.sign_psbt(unsigned_psbt, &cvc).await?;
@@ -119,7 +125,7 @@ pub async fn sign_psbt(
 pub async fn derive(
     card: &mut (impl TapSignerShared + Send + Sync),
     path: Vec<u32>,
-    cvc: String,
+    cvc: Cvc,
 ) -> Result<String, DeriveError> {
     let pubkey = card.derive(path, &cvc).await.map(|pk| pk.to_string())?;
     Ok(pubkey)
@@ -127,8 +133,8 @@ pub async fn derive(
 
 pub async fn change(
     card: &mut (impl TapSignerShared + Send + Sync),
-    new_cvc: String,
-    cvc: String,
+    new_cvc: Cvc,
+    cvc: Cvc,
 ) -> Result<(), ChangeError> {
     card.change(&new_cvc, &cvc).await?;
     Ok(())

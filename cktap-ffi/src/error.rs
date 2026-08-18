@@ -87,6 +87,15 @@ pub enum CkTapError {
     UnknownCardType,
 }
 
+impl From<rust_cktap::CvcError> for CkTapError {
+    fn from(_value: rust_cktap::CvcError) -> Self {
+        // cvc validation failures are local argument errors
+        Self::Card {
+            err: CardError::BadArguments,
+        }
+    }
+}
+
 impl From<rust_cktap::CkTapError> for CkTapError {
     fn from(value: rust_cktap::CkTapError) -> Self {
         match value {
@@ -344,10 +353,6 @@ pub enum ChangeError {
         #[from]
         err: CkTapError,
     },
-    #[error("new cvc is too short, must be at least 6 bytes, was only {len} bytes")]
-    TooShort { len: u32 },
-    #[error("new cvc is too long, must be at most 32 bytes, was {len} bytes")]
-    TooLong { len: u32 },
     #[error("new cvc is the same as the old one")]
     SameAsOld,
 }
@@ -356,8 +361,6 @@ impl From<rust_cktap::ChangeError> for ChangeError {
     fn from(value: rust_cktap::ChangeError) -> Self {
         match value {
             rust_cktap::ChangeError::CkTap(err) => ChangeError::CkTap { err: err.into() },
-            rust_cktap::ChangeError::TooShort(len) => ChangeError::TooShort { len },
-            rust_cktap::ChangeError::TooLong(len) => ChangeError::TooLong { len },
             rust_cktap::ChangeError::SameAsOld => ChangeError::SameAsOld,
         }
     }
@@ -382,6 +385,30 @@ impl From<rust_cktap::XpubError> for XpubError {
             rust_cktap::XpubError::Bip32(err) => XpubError::Bip32 {
                 msg: err.to_string(),
             },
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rust_cktap::CvcError;
+
+    #[test]
+    fn cvc_validation_errors_map_to_bad_arguments() {
+        let errors = [
+            CvcError::TooShort { length: 5 },
+            CvcError::TooLong { length: 33 },
+            CvcError::NonAsciiDigit { index: 5 },
+        ];
+
+        for error in errors {
+            assert_eq!(
+                CkTapError::from(error),
+                CkTapError::Card {
+                    err: CardError::BadArguments
+                }
+            );
         }
     }
 }

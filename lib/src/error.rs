@@ -130,10 +130,6 @@ impl From<pcsc::Error> for StatusError {
 pub enum ChangeError {
     #[error(transparent)]
     CkTap(#[from] CkTapError),
-    #[error("new cvc is too short, must be at least 6 bytes, was only {0} bytes")]
-    TooShort(u32),
-    #[error("new cvc is too long, must be at most 32 bytes, was {0} bytes")]
-    TooLong(u32),
     #[error("new cvc is the same as the old one")]
     SameAsOld,
 }

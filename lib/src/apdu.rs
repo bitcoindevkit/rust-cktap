@@ -625,7 +625,7 @@ impl CommandApdu for WaitCommand {
 #[derive(Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct WaitResponse {
     /// command result
-    success: bool,
+    pub(crate) success: bool,
     /// how much more delay is now required
     #[serde(default)]
     pub(crate) auth_delay: u8,

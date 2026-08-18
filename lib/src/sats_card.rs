@@ -1,7 +1,6 @@
 // Copyright (c) 2025 rust-cktap contributors
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
-use crate::CkTapError;
 use crate::apdu::{
     AppletSelect, CommandApdu as _, DeriveCommand, DeriveResponse, DumpCommand, DumpResponse,
     NewCommand, NewResponse, SignCommand, SignResponse, StatusResponse, UnsealCommand,
@@ -12,6 +11,7 @@ use crate::error::{SignPsbtError, StatusError};
 use crate::shared::{
     Authentication, Certificate, CkTransport, Nfc, Read, Wait, card_pubkey_to_ident, transmit,
 };
+use crate::{CkTapError, Cvc};
 use async_trait::async_trait;
 use bitcoin::bip32::{ChainCode, DerivationPath, Fingerprint, Xpub};
 use bitcoin::secp256k1;
@@ -103,7 +103,7 @@ impl SatsCard {
         &mut self,
         slot: u8,
         chain_code: Option<ChainCode>,
-        cvc: &str,
+        cvc: &Cvc,
     ) -> Result<u8, CkTapError> {
         let (_, epubkey, xcvc) = self.calc_ekeys_xcvc(cvc, NewCommand::name());
         let new_command = NewCommand::new(Some(slot), chain_code, epubkey, xcvc);
@@ -200,7 +200,7 @@ impl SatsCard {
     pub async fn unseal(
         &mut self,
         slot: u8,
-        cvc: &str,
+        cvc: &Cvc,
     ) -> Result<(PrivateKey, PublicKey), UnsealError> {
         let (eprivkey, epubkey, xcvc) = self.calc_ekeys_xcvc(cvc, UnsealCommand::name());
         let unseal_command = UnsealCommand::new(slot, epubkey, xcvc);
@@ -237,7 +237,7 @@ impl SatsCard {
     pub async fn dump(
         &mut self,
         slot: u8,
-        cvc: Option<String>,
+        cvc: Option<Cvc>,
     ) -> Result<(Option<PrivateKey>, PublicKey), DumpError> {
         let epubkey_eprivkey_xcvc = cvc.map(|cvc| {
             let (eprivkey, epubkey, xcvc) = self.calc_ekeys_xcvc(&cvc, DumpCommand::name());
@@ -308,7 +308,7 @@ impl SatsCard {
         &mut self,
         digest: [u8; 32],
         slot: u8,
-        cvc: &str,
+        cvc: &Cvc,
     ) -> Result<SignResponse, CkTapError> {
         let (eprivkey, epubkey, xcvc) = self.calc_ekeys_xcvc(cvc, SignCommand::name());
 
@@ -355,7 +355,7 @@ impl SatsCard {
         &mut self,
         slot: u8,
         mut psbt: bitcoin::Psbt,
-        cvc: &str,
+        cvc: &Cvc,
     ) -> Result<bitcoin::Psbt, SignPsbtError> {
         use bitcoin::{
             secp256k1::ecdsa,
@@ -467,11 +467,11 @@ impl core::fmt::Debug for SatsCard {
 #[cfg(test)]
 mod test {
     #![allow(deprecated)] // bdk_wallet::SignOptions is deprecated upstream; tests still rely on it.
-    use crate::CkTapCard;
     use crate::emulator::find_emulator;
     use crate::emulator::test::{CardTypeOption, EcardSubprocess};
     use crate::error::DumpError;
     use crate::shared::Certificate;
+    use crate::{CkTapCard, Cvc};
     use bdk_wallet::chain::{BlockId, ConfirmationBlockTime};
     use bdk_wallet::template::P2Wpkh;
     use bdk_wallet::test_utils::{insert_anchor, insert_checkpoint, insert_tx, new_tx};
@@ -493,7 +493,8 @@ mod test {
         if let CkTapCard::SatsCard(mut sc) = emulator {
             let slot_pubkey = sc.slot_pubkey().await.unwrap().unwrap();
             let card_address = sc.address().await.unwrap();
-            let (_seckey, pubkey) = sc.unseal(0, "123456").await.unwrap();
+            let cvc = Cvc::try_from("123456").unwrap();
+            let (_seckey, pubkey) = sc.unseal(0, &cvc).await.unwrap();
             assert_eq!(pubkey, slot_pubkey);
 
             let descriptor = P2Wpkh(pubkey);
@@ -551,7 +552,7 @@ mod test {
                 )
                 .fee_rate(FeeRate::from_sat_per_vb(2).unwrap());
             let psbt = builder.finish().unwrap();
-            let mut signed_psbt = sc.sign_psbt(0, psbt, "123456").await.unwrap();
+            let mut signed_psbt = sc.sign_psbt(0, psbt, &cvc).await.unwrap();
             let finalized = wallet
                 .finalize_psbt(&mut signed_psbt, SignOptions::default())
                 .unwrap();
@@ -573,15 +574,16 @@ mod test {
         let emulator = find_emulator(pipe_path).await.unwrap();
         if let CkTapCard::SatsCard(mut sc) = emulator {
             // slot 0 is sealed, with cvc return sealed error
-            let slot_keys = sc.dump(0, Some("123456".to_string())).await;
+            let cvc = Cvc::try_from("123456").unwrap();
+            let slot_keys = sc.dump(0, Some(cvc.clone())).await;
             assert!(matches!(slot_keys, Err(DumpError::SlotSealed(slot)) if slot == 0));
             // slot 0 is sealed, with no cvc return sealed error
             let slot_keys = sc.dump(0, None).await;
             assert!(matches!(slot_keys, Err(DumpError::SlotSealed(slot)) if slot == 0));
             // unseal slot 0
-            sc.unseal(0, "123456").await.unwrap();
+            sc.unseal(0, &cvc).await.unwrap();
             // slot 0 is unsealed, with cvc return privkey
-            let slot_keys = sc.dump(0, Some("123456".to_string())).await;
+            let slot_keys = sc.dump(0, Some(cvc.clone())).await;
             assert!(slot_keys.is_ok());
             assert!(matches!(slot_keys, Ok((Some(_), _))));
             let slot_keys = slot_keys.unwrap();
@@ -593,7 +595,7 @@ mod test {
             assert!(slot_keys.is_ok());
             assert!(matches!(slot_keys, Ok((None, _))));
             // slot 1 is unused, with cvc return unused error
-            let dump_response = sc.dump(1, Some("123456".to_string())).await;
+            let dump_response = sc.dump(1, Some(cvc)).await;
             assert!(matches!(dump_response, Err(DumpError::SlotUnused(slot)) if slot == 1));
             // slot 1 is unused, with no cvc also return unused error
             let dump_response = sc.dump(1, None).await;

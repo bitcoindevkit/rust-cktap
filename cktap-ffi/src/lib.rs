@@ -13,6 +13,7 @@ use crate::sats_card::SatsCard;
 use crate::sats_chip::SatsChip;
 use crate::tap_signer::TapSigner;
 use futures::lock::Mutex;
+use rust_cktap::Cvc;
 use rust_cktap::shared::{Certificate, Read};
 use std::fmt::Debug;
 use std::sync::Arc;
@@ -69,6 +70,11 @@ async fn read(
     card: &mut (impl Read + Send + Sync),
     cvc: Option<String>,
 ) -> Result<String, ReadError> {
+    let cvc = cvc
+        .map(Cvc::try_from)
+        .transpose()
+        .map_err(CkTapError::from)?;
+
     card.read(cvc)
         .await
         .map(|pk| pk.to_string())
