@@ -469,6 +469,18 @@ pub enum ChangeError {
     NewCvc { err: CvcError },
 }
 
+impl ChangeError {
+    /// Wrap a CVC validation failure for the current CVC
+    pub(crate) fn current_cvc(err: impl Into<CvcError>) -> Self {
+        Self::CurrentCvc { err: err.into() }
+    }
+
+    /// Wrap a CVC validation failure for the new CVC
+    pub(crate) fn new_cvc(err: impl Into<CvcError>) -> Self {
+        Self::NewCvc { err: err.into() }
+    }
+}
+
 impl From<rust_cktap::ChangeError> for ChangeError {
     fn from(value: rust_cktap::ChangeError) -> Self {
         match value {

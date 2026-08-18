@@ -80,12 +80,8 @@ impl TapSigner {
     }
 
     pub async fn change(&self, new_cvc: String, cvc: String) -> Result<(), ChangeError> {
-        let new_cvc = Cvc::try_from(new_cvc).map_err(|err| ChangeError::NewCvc {
-            err: CvcError::from(err),
-        })?;
-        let cvc = Cvc::try_from(cvc).map_err(|err| ChangeError::CurrentCvc {
-            err: CvcError::from(err),
-        })?;
+        let new_cvc = Cvc::try_from(new_cvc).map_err(ChangeError::new_cvc)?;
+        let cvc = Cvc::try_from(cvc).map_err(ChangeError::current_cvc)?;
         let mut card = self.0.lock().await;
         change(&mut *card, new_cvc, cvc).await?;
         Ok(())

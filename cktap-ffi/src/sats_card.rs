@@ -5,6 +5,7 @@ use crate::check_cert;
 use crate::error::{
     CertsError, CkTapError, CvcError, DeriveError, DumpError, ReadError, SignPsbtError, UnsealError,
 };
+use crate::parse_optional_cvc;
 use futures::lock::Mutex;
 use rust_cktap::descriptor::Wpkh;
 use rust_cktap::shared::{Authentication, Nfc, Read, Wait};
@@ -114,7 +115,7 @@ impl SatsCard {
     /// This is only needed for debugging, use `sign_psbt` for signing
     /// If no CVC given only pubkey and pubkey descriptor returned.
     pub async fn dump(&self, slot: u8, cvc: Option<String>) -> Result<SlotDetails, DumpError> {
-        let cvc = cvc.map(Cvc::try_from).transpose().map_err(CvcError::from)?;
+        let cvc = parse_optional_cvc(cvc)?;
         let mut card = self.0.lock().await;
         let (privkey, pubkey) = card.dump(slot, cvc).await?;
         Ok(SlotDetails {

@@ -66,11 +66,15 @@ pub async fn to_cktap(transport: Box<dyn CkTransport>) -> Result<CkTapCard, Stat
 
 // command helpers
 
+fn parse_optional_cvc(cvc: Option<String>) -> Result<Option<Cvc>, CvcError> {
+    cvc.map(Cvc::try_from).transpose().map_err(CvcError::from)
+}
+
 async fn read(
     card: &mut (impl Read + Send + Sync),
     cvc: Option<String>,
 ) -> Result<String, ReadError> {
-    let cvc = cvc.map(Cvc::try_from).transpose().map_err(CvcError::from)?;
+    let cvc = parse_optional_cvc(cvc)?;
 
     card.read(cvc)
         .await
