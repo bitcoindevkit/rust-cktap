@@ -15,17 +15,17 @@ pub enum CkTapError {
     CborValue(String),
     #[error("APDU transport error: {0}")]
     Transport(String),
-    #[error("Unknown APDU status word ({code}): {message}")]
-    UnknownStatusWord { code: u16, message: String },
+    #[error("Unknown card error code ({code}): {message}")]
+    UnknownErrorCode { code: u16, message: String },
     #[error("Unknown card type")]
     UnknownCardType,
 }
 
 impl CkTapError {
-    pub(crate) fn from_status_word(code: u16, message: impl Into<String>) -> Self {
+    pub(crate) fn from_error_response(code: u16, message: impl Into<String>) -> Self {
         match CardError::error_from_code(code) {
             Some(error) => Self::Card(error),
-            None => Self::UnknownStatusWord {
+            None => Self::UnknownErrorCode {
                 code,
                 message: message.into(),
             },

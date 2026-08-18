@@ -13,16 +13,14 @@ pub const MAX_CVC_LENGTH: usize = 32;
 
 /// A numeric secret used to authenticate CkTap commands
 ///
-/// The protocol specification is internally inconsistent: its CVC content section permits
-/// non-ASCII bytes, but its TAPSIGNER `change` command requires numeric digits
+/// This library supports the numeric CVC behavior in public firmware 1.0.1 and later
 ///
-/// This type follows factory-card behavior and the `change` command rule by accepting only ASCII
-/// digits
+/// Earlier firmware could retain a nonnumeric TAPSIGNER CVC, but that firmware did not reach
+/// public cards, so current and replacement CVCs use one numeric-only type
 ///
-/// See [CVC Length & Content] and [`change`]
+/// See the [firmware 1.0.1 change log]
 ///
-/// [CVC Length & Content]: https://github.com/coinkite/coinkite-tap-proto/blob/master/docs/protocol.md#cvc-length--content
-/// [`change`]: https://github.com/coinkite/coinkite-tap-proto/blob/master/docs/protocol.md#change
+/// [firmware 1.0.1 change log]: https://github.com/coinkite/coinkite-tap-proto/blob/master/docs/change-log.md#101---early-july-2022
 #[derive(Clone, PartialEq, Eq)]
 pub struct Cvc(String);
 

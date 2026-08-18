@@ -45,7 +45,7 @@ pub trait ResponseApdu {
         let cbor_struct: Result<ErrorResponse, _> = cbor_value.deserialized();
 
         if let Ok(error_resp) = cbor_struct {
-            return Err(CkTapError::from_status_word(
+            return Err(CkTapError::from_error_response(
                 error_resp.code,
                 error_resp.error,
             ));
@@ -899,7 +899,7 @@ mod tests {
     }
 
     #[test]
-    fn known_status_word_maps_to_card_error() {
+    fn known_error_code_maps_to_card_error() {
         let error = StatusResponse::from_cbor(encode_error_response(400, "bad arguments"))
             .expect_err("error response must fail to deserialize as status");
 
@@ -907,13 +907,13 @@ mod tests {
     }
 
     #[test]
-    fn unknown_status_word_preserves_code_and_message() {
+    fn unknown_error_code_preserves_code_and_message() {
         let error = StatusResponse::from_cbor(encode_error_response(499, "future protocol error"))
             .expect_err("error response must fail to deserialize as status");
 
         assert_eq!(
             error,
-            CkTapError::UnknownStatusWord {
+            CkTapError::UnknownErrorCode {
                 code: 499,
                 message: "future protocol error".to_string(),
             }
