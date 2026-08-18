@@ -6,7 +6,7 @@ use clap::{Parser, Subcommand};
 use rpassword::read_password;
 #[cfg(feature = "emulator")]
 use rust_cktap::emulator;
-use rust_cktap::error::{DumpError, StatusError, UnsealError};
+use rust_cktap::error::{DumpError, StatusError, UnsealError, XpubError};
 #[cfg(not(feature = "emulator"))]
 use rust_cktap::pcsc;
 use rust_cktap::shared::{Authentication, Nfc, Read, Wait};
@@ -38,6 +38,8 @@ pub enum CliError {
     CkTap(#[from] CkTapError),
     #[error(transparent)]
     Cvc(#[from] CvcError),
+    #[error(transparent)]
+    Xpub(#[from] XpubError),
     #[error("unable to read CVC: {0}")]
     CvcInput(String),
 }
@@ -262,7 +264,7 @@ async fn main() -> Result<(), CliError> {
                 }
                 TapSignerCommand::Wait => wait(ts).await,
                 TapSignerCommand::Nfc => nfc(ts).await,
-                TapSignerCommand::Xpub { master } => xpub(ts, master).await,
+                TapSignerCommand::Xpub { master } => xpub(ts, master).await?,
             }
         }
         CkTapCard::SatsChip(sc) => {
@@ -298,7 +300,7 @@ async fn main() -> Result<(), CliError> {
                 }
                 SatsChipCommand::Wait => wait(sc).await,
                 SatsChipCommand::Nfc => nfc(sc).await,
-                SatsChipCommand::Xpub { master } => xpub(sc, master).await,
+                SatsChipCommand::Xpub { master } => xpub(sc, master).await?,
             }
         }
     }
@@ -339,13 +341,19 @@ fn cvc() -> Result<Cvc, CliError> {
     print!("Enter cvc: ");
     io::stdout().flush().unwrap();
     let cvc = read_password().map_err(|error| CliError::CvcInput(error.to_string()))?;
-    Ok(Cvc::try_from(cvc)?)
+    Ok(Cvc::try_from(cvc.trim())?)
 }
 
 fn optional_cvc() -> Result<Option<Cvc>, CliError> {
     print!("Enter cvc (leave empty for none): ");
     io::stdout().flush().unwrap();
     let cvc = read_password().map_err(|error| CliError::CvcInput(error.to_string()))?;
+    Ok(parse_optional_cvc_input(cvc)?)
+}
+
+fn parse_optional_cvc_input(cvc: String) -> Result<Option<Cvc>, CvcError> {
+    let cvc = cvc.trim();
+
     if cvc.is_empty() {
         Ok(None)
     } else {
@@ -377,13 +385,25 @@ where
     println!("{nfc}");
 }
 
-async fn xpub<C>(card: &mut C, master: bool)
+async fn xpub<C>(card: &mut C, master: bool) -> Result<(), CliError>
 where
     C: TapSignerShared + Send,
 {
     dbg!(master);
-    let cvc = cvc().expect("valid cvc");
-    let xpub = card.xpub(master, &cvc).await.expect("xpub failed");
+    let cvc = cvc()?;
+    let xpub = card.xpub(master, &cvc).await?;
     dbg!(&xpub);
     println!("{xpub}");
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn optional_prompt_treats_whitespace_as_no_cvc() {
+        let cvc = parse_optional_cvc_input(" \t\n".to_string()).expect("empty CVC is valid");
+        assert_eq!(cvc, None);
+    }
 }
