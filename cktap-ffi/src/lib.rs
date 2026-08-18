@@ -35,7 +35,78 @@ impl rust_cktap::CkTransport for CkTransportWrapper {
         self.0
             .transmit_apdu(command_apdu)
             .await
-            .map_err(|e| rust_cktap::CkTapError::Transport(e.to_string()))
+            .map_err(rust_cktap::CkTapError::from)
+    }
+}
+
+#[cfg(test)]
+mod transport_tests {
+    use super::*;
+    use crate::error::CardError;
+    use rust_cktap::CkTransport as _;
+
+    struct ErrorTransport(CkTapError);
+
+    #[async_trait::async_trait]
+    impl CkTransport for ErrorTransport {
+        async fn transmit_apdu(&self, _command_apdu: Vec<u8>) -> Result<Vec<u8>, CkTapError> {
+            Err(self.0.clone())
+        }
+    }
+
+    fn transmit_error(error: CkTapError) -> rust_cktap::CkTapError {
+        futures::executor::block_on(
+            CkTransportWrapper(Box::new(ErrorTransport(error))).transmit_apdu(Vec::new()),
+        )
+        .expect_err("error transport must fail")
+    }
+
+    #[test]
+    fn callback_errors_keep_their_typed_protocol_variants() {
+        let cases = [
+            (
+                CkTapError::Card {
+                    err: CardError::BadAuth,
+                },
+                rust_cktap::CkTapError::Card(rust_cktap::CardError::BadAuth),
+            ),
+            (
+                CkTapError::CborDe {
+                    msg: "invalid response".to_string(),
+                },
+                rust_cktap::CkTapError::CborDe("invalid response".to_string()),
+            ),
+            (
+                CkTapError::CborValue {
+                    msg: "invalid value".to_string(),
+                },
+                rust_cktap::CkTapError::CborValue("invalid value".to_string()),
+            ),
+            (
+                CkTapError::Transport {
+                    msg: "link lost".to_string(),
+                },
+                rust_cktap::CkTapError::Transport("link lost".to_string()),
+            ),
+            (
+                CkTapError::UnknownStatusWord {
+                    code: 499,
+                    message: "future status".to_string(),
+                },
+                rust_cktap::CkTapError::UnknownStatusWord {
+                    code: 499,
+                    message: "future status".to_string(),
+                },
+            ),
+            (
+                CkTapError::UnknownCardType,
+                rust_cktap::CkTapError::UnknownCardType,
+            ),
+        ];
+
+        for (callback_error, expected) in cases {
+            assert_eq!(transmit_error(callback_error), expected);
+        }
     }
 }
 

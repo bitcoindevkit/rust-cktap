@@ -15,8 +15,22 @@ pub enum CkTapError {
     CborValue(String),
     #[error("APDU transport error: {0}")]
     Transport(String),
+    #[error("Unknown APDU status word ({code}): {message}")]
+    UnknownStatusWord { code: u16, message: String },
     #[error("Unknown card type")]
     UnknownCardType,
+}
+
+impl CkTapError {
+    pub(crate) fn from_status_word(code: u16, message: impl Into<String>) -> Self {
+        match CardError::error_from_code(code) {
+            Some(error) => Self::Card(error),
+            None => Self::UnknownStatusWord {
+                code,
+                message: message.into(),
+            },
+        }
+    }
 }
 
 /// Errors returned by the CkTap card.

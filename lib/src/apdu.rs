@@ -5,8 +5,8 @@
 /// reader and a smart card. This file defines the Coinkite APDU and set of command/responses.
 pub mod tap_signer;
 
+use crate::CkTapError;
 use crate::error::{ErrorResponse, ReadError};
-use crate::{CardError, CkTapError};
 use bitcoin::bip32::ChainCode;
 use bitcoin::secp256k1::{self, ecdh::SharedSecret, ecdsa::Signature};
 use bitcoin::{Network, PrivateKey, PublicKey};
@@ -45,8 +45,10 @@ pub trait ResponseApdu {
         let cbor_struct: Result<ErrorResponse, _> = cbor_value.deserialized();
 
         if let Ok(error_resp) = cbor_struct {
-            let error = CardError::error_from_code(error_resp.code).unwrap_or(CardError::BadCBOR);
-            return Err(CkTapError::Card(error));
+            return Err(CkTapError::from_status_word(
+                error_resp.code,
+                error_resp.error,
+            ));
         }
 
         let cbor_struct: Self = cbor_value.deserialized()?;
@@ -874,3 +876,47 @@ pub struct DumpResponse {
 }
 
 impl ResponseApdu for DumpResponse {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{CardError, CkTapError};
+
+    #[derive(Serialize)]
+    struct ErrorResponseFixture {
+        error: String,
+        code: u16,
+    }
+
+    fn encode_error_response(code: u16, message: &str) -> Vec<u8> {
+        let response = ErrorResponseFixture {
+            error: message.to_string(),
+            code,
+        };
+        let mut cbor = Vec::new();
+        into_writer(&response, &mut cbor).expect("error response fixture serializes");
+        cbor
+    }
+
+    #[test]
+    fn known_status_word_maps_to_card_error() {
+        let error = StatusResponse::from_cbor(encode_error_response(400, "bad arguments"))
+            .expect_err("error response must fail to deserialize as status");
+
+        assert_eq!(error, CkTapError::Card(CardError::BadArguments));
+    }
+
+    #[test]
+    fn unknown_status_word_preserves_code_and_message() {
+        let error = StatusResponse::from_cbor(encode_error_response(499, "future protocol error"))
+            .expect_err("error response must fail to deserialize as status");
+
+        assert_eq!(
+            error,
+            CkTapError::UnknownStatusWord {
+                code: 499,
+                message: "future protocol error".to_string(),
+            }
+        );
+    }
+}

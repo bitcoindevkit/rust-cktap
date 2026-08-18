@@ -72,6 +72,24 @@ impl From<rust_cktap::CardError> for CardError {
     }
 }
 
+impl From<CardError> for rust_cktap::CardError {
+    fn from(value: CardError) -> Self {
+        match value {
+            CardError::UnluckyNumber => Self::UnluckyNumber,
+            CardError::BadArguments => Self::BadArguments,
+            CardError::BadAuth => Self::BadAuth,
+            CardError::NeedsAuth => Self::NeedsAuth,
+            CardError::UnknownCommand => Self::UnknownCommand,
+            CardError::InvalidCommand => Self::InvalidCommand,
+            CardError::InvalidState => Self::InvalidState,
+            CardError::WeakNonce => Self::WeakNonce,
+            CardError::BadCBOR => Self::BadCBOR,
+            CardError::BackupFirst => Self::BackupFirst,
+            CardError::RateLimited => Self::RateLimited,
+        }
+    }
+}
+
 /// Errors returned by the card, CBOR deserialization or value encoding, or the APDU transport.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error, uniffi::Error)]
 pub enum CkTapError {
@@ -83,6 +101,8 @@ pub enum CkTapError {
     CborValue { msg: String },
     #[error("APDU transport error: {msg}")]
     Transport { msg: String },
+    #[error("Unknown APDU status word ({code}): {message}")]
+    UnknownStatusWord { code: u16, message: String },
     #[error("Unknown card type")]
     UnknownCardType,
 }
@@ -103,7 +123,25 @@ impl From<rust_cktap::CkTapError> for CkTapError {
             rust_cktap::CkTapError::CborDe(msg) => CkTapError::CborDe { msg },
             rust_cktap::CkTapError::CborValue(msg) => CkTapError::CborValue { msg },
             rust_cktap::CkTapError::Transport(msg) => CkTapError::Transport { msg },
+            rust_cktap::CkTapError::UnknownStatusWord { code, message } => {
+                CkTapError::UnknownStatusWord { code, message }
+            }
             rust_cktap::CkTapError::UnknownCardType => CkTapError::UnknownCardType,
+        }
+    }
+}
+
+impl From<CkTapError> for rust_cktap::CkTapError {
+    fn from(value: CkTapError) -> Self {
+        match value {
+            CkTapError::Card { err } => Self::Card(err.into()),
+            CkTapError::CborDe { msg } => Self::CborDe(msg),
+            CkTapError::CborValue { msg } => Self::CborValue(msg),
+            CkTapError::Transport { msg } => Self::Transport(msg),
+            CkTapError::UnknownStatusWord { code, message } => {
+                Self::UnknownStatusWord { code, message }
+            }
+            CkTapError::UnknownCardType => Self::UnknownCardType,
         }
     }
 }
