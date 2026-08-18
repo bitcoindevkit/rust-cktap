@@ -398,7 +398,7 @@ private func uniffiTraitInterfaceCallWithError<T, E>(
         callStatus.pointee.errorBuf = FfiConverterString.lower(String(describing: error))
     }
 }
-// Initial value and increment amount for handles.
+// Initial value and increment amount for handles. 
 // These ensure that SWIFT handles always have the lowest bit set
 fileprivate let UNIFFI_HANDLEMAP_INITIAL: UInt64 = 1
 fileprivate let UNIFFI_HANDLEMAP_DELTA: UInt64 = 2
@@ -608,55 +608,55 @@ fileprivate struct FfiConverterData: FfiConverterRustBuffer {
 
 
 public protocol SatsCardProtocol: AnyObject, Sendable {
-
+    
     /**
      * Get the current active slot's receive address
      */
     func address() async throws  -> String
-
+    
     /**
      * Verify the card has authentic Coinkite root certificate
      */
-    func checkCert() async throws
-
+    func checkCert() async throws 
+    
     /**
      * This is only needed for debugging, use `sign_psbt` for signing
      * If no CVC given only pubkey and pubkey descriptor returned.
      */
     func dump(slot: UInt8, cvc: String?) async throws  -> SlotDetails
-
+    
     /**
      * Open a new slot, it will be the current active but must be unused (no address)
      */
     func newSlot(cvc: String) async throws  -> UInt8
-
+    
     /**
      * Return the same URL as given with a NFC tap.
      */
     func nfc() async throws  -> String
-
+    
     /**
      * Get the current active slot's wpkh public key descriptor
      */
     func read() async throws  -> String
-
+    
     /**
      * Sign PSBT, base64 encoded
      */
     func signPsbt(slot: UInt8, psbt: String, cvc: String) async throws  -> String
-
+    
     func status() async  -> SatsCardStatus
-
+    
     /**
      * Unseal currently active slot
      */
     func unseal(cvc: String) async throws  -> SlotDetails
-
+    
     /**
      * Wait one second of auth delay and return the remaining delay, if any.
      */
     func wait() async throws  -> UInt8?
-
+    
 }
 open class SatsCard: SatsCardProtocol, @unchecked Sendable {
     fileprivate let handle: UInt64
@@ -708,9 +708,9 @@ open class SatsCard: SatsCardProtocol, @unchecked Sendable {
         try! rustCall { uniffi_cktap_ffi_fn_free_satscard(handle, $0) }
     }
 
+    
 
-
-
+    
     /**
      * Get the current active slot's receive address
      */
@@ -729,7 +729,7 @@ open func address()async throws  -> String  {
             errorHandler: FfiConverterTypeReadError_lift
         )
 }
-
+    
     /**
      * Verify the card has authentic Coinkite root certificate
      */
@@ -748,7 +748,7 @@ open func checkCert()async throws   {
             errorHandler: FfiConverterTypeCertsError_lift
         )
 }
-
+    
     /**
      * This is only needed for debugging, use `sign_psbt` for signing
      * If no CVC given only pubkey and pubkey descriptor returned.
@@ -768,7 +768,7 @@ open func dump(slot: UInt8, cvc: String?)async throws  -> SlotDetails  {
             errorHandler: FfiConverterTypeDumpError_lift
         )
 }
-
+    
     /**
      * Open a new slot, it will be the current active but must be unused (no address)
      */
@@ -787,7 +787,7 @@ open func newSlot(cvc: String)async throws  -> UInt8  {
             errorHandler: FfiConverterTypeDeriveError_lift
         )
 }
-
+    
     /**
      * Return the same URL as given with a NFC tap.
      */
@@ -806,7 +806,7 @@ open func nfc()async throws  -> String  {
             errorHandler: FfiConverterTypeCkTapError_lift
         )
 }
-
+    
     /**
      * Get the current active slot's wpkh public key descriptor
      */
@@ -825,7 +825,7 @@ open func read()async throws  -> String  {
             errorHandler: FfiConverterTypeReadError_lift
         )
 }
-
+    
     /**
      * Sign PSBT, base64 encoded
      */
@@ -844,7 +844,7 @@ open func signPsbt(slot: UInt8, psbt: String, cvc: String)async throws  -> Strin
             errorHandler: FfiConverterTypeSignPsbtError_lift
         )
 }
-
+    
 open func status()async  -> SatsCardStatus  {
     return
         try!  await uniffiRustCallAsync(
@@ -858,10 +858,10 @@ open func status()async  -> SatsCardStatus  {
             freeFunc: ffi_cktap_ffi_rust_future_free_rust_buffer,
             liftFunc: FfiConverterTypeSatsCardStatus_lift,
             errorHandler: nil
-
+            
         )
 }
-
+    
     /**
      * Unseal currently active slot
      */
@@ -880,7 +880,7 @@ open func unseal(cvc: String)async throws  -> SlotDetails  {
             errorHandler: FfiConverterTypeUnsealError_lift
         )
 }
-
+    
     /**
      * Wait one second of auth delay and return the remaining delay, if any.
      */
@@ -899,9 +899,9 @@ open func wait()async throws  -> UInt8?  {
             errorHandler: FfiConverterTypeCkTapError_lift
         )
 }
+    
 
-
-
+    
 }
 
 
@@ -951,27 +951,27 @@ public func FfiConverterTypeSatsCard_lift(_ handle: UInt64) throws -> SatsCard {
 
 
 public protocol SatsChipProtocol: AnyObject, Sendable {
-
-    func change(newCvc: String, cvc: String) async throws
-
-    func checkCert() async throws
-
+    
+    func change(newCvc: String, cvc: String) async throws 
+    
+    func checkCert() async throws 
+    
     func derive(path: [UInt32], cvc: String) async throws  -> String
-
-    func `init`(cvc: String) async throws
-
+    
+    func `init`(cvc: String) async throws 
+    
     func nfc() async throws  -> String
-
+    
     func read() async throws  -> String
-
+    
     func signPsbt(psbt: String, cvc: String) async throws  -> String
-
+    
     func status() async  -> SatsChipStatus
-
+    
     func wait() async throws  -> UInt8?
-
+    
     func xpub(master: Bool, cvc: String) async throws  -> String
-
+    
 }
 open class SatsChip: SatsChipProtocol, @unchecked Sendable {
     fileprivate let handle: UInt64
@@ -1023,9 +1023,9 @@ open class SatsChip: SatsChipProtocol, @unchecked Sendable {
         try! rustCall { uniffi_cktap_ffi_fn_free_satschip(handle, $0) }
     }
 
+    
 
-
-
+    
 open func change(newCvc: String, cvc: String)async throws   {
     return
         try  await uniffiRustCallAsync(
@@ -1041,7 +1041,7 @@ open func change(newCvc: String, cvc: String)async throws   {
             errorHandler: FfiConverterTypeChangeError_lift
         )
 }
-
+    
 open func checkCert()async throws   {
     return
         try  await uniffiRustCallAsync(
@@ -1057,7 +1057,7 @@ open func checkCert()async throws   {
             errorHandler: FfiConverterTypeCertsError_lift
         )
 }
-
+    
 open func derive(path: [UInt32], cvc: String)async throws  -> String  {
     return
         try  await uniffiRustCallAsync(
@@ -1073,7 +1073,7 @@ open func derive(path: [UInt32], cvc: String)async throws  -> String  {
             errorHandler: FfiConverterTypeDeriveError_lift
         )
 }
-
+    
 open func `init`(cvc: String)async throws   {
     return
         try  await uniffiRustCallAsync(
@@ -1086,10 +1086,10 @@ open func `init`(cvc: String)async throws   {
             completeFunc: ffi_cktap_ffi_rust_future_complete_void,
             freeFunc: ffi_cktap_ffi_rust_future_free_void,
             liftFunc: { $0 },
-            errorHandler: FfiConverterTypeCkTapError_lift
+            errorHandler: FfiConverterTypeInitError_lift
         )
 }
-
+    
 open func nfc()async throws  -> String  {
     return
         try  await uniffiRustCallAsync(
@@ -1105,7 +1105,7 @@ open func nfc()async throws  -> String  {
             errorHandler: FfiConverterTypeCkTapError_lift
         )
 }
-
+    
 open func read()async throws  -> String  {
     return
         try  await uniffiRustCallAsync(
@@ -1121,7 +1121,7 @@ open func read()async throws  -> String  {
             errorHandler: FfiConverterTypeReadError_lift
         )
 }
-
+    
 open func signPsbt(psbt: String, cvc: String)async throws  -> String  {
     return
         try  await uniffiRustCallAsync(
@@ -1137,7 +1137,7 @@ open func signPsbt(psbt: String, cvc: String)async throws  -> String  {
             errorHandler: FfiConverterTypeSignPsbtError_lift
         )
 }
-
+    
 open func status()async  -> SatsChipStatus  {
     return
         try!  await uniffiRustCallAsync(
@@ -1151,10 +1151,10 @@ open func status()async  -> SatsChipStatus  {
             freeFunc: ffi_cktap_ffi_rust_future_free_rust_buffer,
             liftFunc: FfiConverterTypeSatsChipStatus_lift,
             errorHandler: nil
-
+            
         )
 }
-
+    
 open func wait()async throws  -> UInt8?  {
     return
         try  await uniffiRustCallAsync(
@@ -1170,7 +1170,7 @@ open func wait()async throws  -> UInt8?  {
             errorHandler: FfiConverterTypeCkTapError_lift
         )
 }
-
+    
 open func xpub(master: Bool, cvc: String)async throws  -> String  {
     return
         try  await uniffiRustCallAsync(
@@ -1186,9 +1186,9 @@ open func xpub(master: Bool, cvc: String)async throws  -> String  {
             errorHandler: FfiConverterTypeXpubError_lift
         )
 }
+    
 
-
-
+    
 }
 
 
@@ -1238,27 +1238,27 @@ public func FfiConverterTypeSatsChip_lift(_ handle: UInt64) throws -> SatsChip {
 
 
 public protocol TapSignerProtocol: AnyObject, Sendable {
-
-    func change(newCvc: String, cvc: String) async throws
-
-    func checkCert() async throws
-
+    
+    func change(newCvc: String, cvc: String) async throws 
+    
+    func checkCert() async throws 
+    
     func derive(path: [UInt32], cvc: String) async throws  -> String
-
-    func `init`(cvc: String) async throws
-
+    
+    func `init`(cvc: String) async throws 
+    
     func nfc() async throws  -> String
-
+    
     func read(cvc: String) async throws  -> String
-
+    
     func signPsbt(psbt: String, cvc: String) async throws  -> String
-
+    
     func status() async  -> TapSignerStatus
-
+    
     func wait() async throws  -> UInt8?
-
+    
     func xpub(master: Bool, cvc: String) async throws  -> String
-
+    
 }
 open class TapSigner: TapSignerProtocol, @unchecked Sendable {
     fileprivate let handle: UInt64
@@ -1310,9 +1310,9 @@ open class TapSigner: TapSignerProtocol, @unchecked Sendable {
         try! rustCall { uniffi_cktap_ffi_fn_free_tapsigner(handle, $0) }
     }
 
+    
 
-
-
+    
 open func change(newCvc: String, cvc: String)async throws   {
     return
         try  await uniffiRustCallAsync(
@@ -1328,7 +1328,7 @@ open func change(newCvc: String, cvc: String)async throws   {
             errorHandler: FfiConverterTypeChangeError_lift
         )
 }
-
+    
 open func checkCert()async throws   {
     return
         try  await uniffiRustCallAsync(
@@ -1344,7 +1344,7 @@ open func checkCert()async throws   {
             errorHandler: FfiConverterTypeCertsError_lift
         )
 }
-
+    
 open func derive(path: [UInt32], cvc: String)async throws  -> String  {
     return
         try  await uniffiRustCallAsync(
@@ -1360,7 +1360,7 @@ open func derive(path: [UInt32], cvc: String)async throws  -> String  {
             errorHandler: FfiConverterTypeDeriveError_lift
         )
 }
-
+    
 open func `init`(cvc: String)async throws   {
     return
         try  await uniffiRustCallAsync(
@@ -1373,10 +1373,10 @@ open func `init`(cvc: String)async throws   {
             completeFunc: ffi_cktap_ffi_rust_future_complete_void,
             freeFunc: ffi_cktap_ffi_rust_future_free_void,
             liftFunc: { $0 },
-            errorHandler: FfiConverterTypeCkTapError_lift
+            errorHandler: FfiConverterTypeInitError_lift
         )
 }
-
+    
 open func nfc()async throws  -> String  {
     return
         try  await uniffiRustCallAsync(
@@ -1392,7 +1392,7 @@ open func nfc()async throws  -> String  {
             errorHandler: FfiConverterTypeCkTapError_lift
         )
 }
-
+    
 open func read(cvc: String)async throws  -> String  {
     return
         try  await uniffiRustCallAsync(
@@ -1408,7 +1408,7 @@ open func read(cvc: String)async throws  -> String  {
             errorHandler: FfiConverterTypeReadError_lift
         )
 }
-
+    
 open func signPsbt(psbt: String, cvc: String)async throws  -> String  {
     return
         try  await uniffiRustCallAsync(
@@ -1424,7 +1424,7 @@ open func signPsbt(psbt: String, cvc: String)async throws  -> String  {
             errorHandler: FfiConverterTypeSignPsbtError_lift
         )
 }
-
+    
 open func status()async  -> TapSignerStatus  {
     return
         try!  await uniffiRustCallAsync(
@@ -1438,10 +1438,10 @@ open func status()async  -> TapSignerStatus  {
             freeFunc: ffi_cktap_ffi_rust_future_free_rust_buffer,
             liftFunc: FfiConverterTypeTapSignerStatus_lift,
             errorHandler: nil
-
+            
         )
 }
-
+    
 open func wait()async throws  -> UInt8?  {
     return
         try  await uniffiRustCallAsync(
@@ -1457,7 +1457,7 @@ open func wait()async throws  -> UInt8?  {
             errorHandler: FfiConverterTypeCkTapError_lift
         )
 }
-
+    
 open func xpub(master: Bool, cvc: String)async throws  -> String  {
     return
         try  await uniffiRustCallAsync(
@@ -1473,9 +1473,9 @@ open func xpub(master: Bool, cvc: String)async throws  -> String  {
             errorHandler: FfiConverterTypeXpubError_lift
         )
 }
+    
 
-
-
+    
 }
 
 
@@ -1547,9 +1547,9 @@ public struct SatsCardStatus: Equatable, Hashable {
         self.authDelay = authDelay
     }
 
+    
 
-
-
+    
 }
 
 #if compiler(>=6)
@@ -1563,14 +1563,14 @@ public struct FfiConverterTypeSatsCardStatus: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SatsCardStatus {
         return
             try SatsCardStatus(
-                proto: FfiConverterUInt32.read(from: &buf),
-                ver: FfiConverterString.read(from: &buf),
-                birth: FfiConverterUInt32.read(from: &buf),
-                activeSlot: FfiConverterUInt8.read(from: &buf),
-                numSlots: FfiConverterUInt8.read(from: &buf),
-                addr: FfiConverterOptionString.read(from: &buf),
-                pubkey: FfiConverterString.read(from: &buf),
-                cardIdent: FfiConverterString.read(from: &buf),
+                proto: FfiConverterUInt32.read(from: &buf), 
+                ver: FfiConverterString.read(from: &buf), 
+                birth: FfiConverterUInt32.read(from: &buf), 
+                activeSlot: FfiConverterUInt8.read(from: &buf), 
+                numSlots: FfiConverterUInt8.read(from: &buf), 
+                addr: FfiConverterOptionString.read(from: &buf), 
+                pubkey: FfiConverterString.read(from: &buf), 
+                cardIdent: FfiConverterString.read(from: &buf), 
                 authDelay: FfiConverterOptionUInt8.read(from: &buf)
         )
     }
@@ -1625,9 +1625,9 @@ public struct SatsChipStatus: Equatable, Hashable {
         self.authDelay = authDelay
     }
 
+    
 
-
-
+    
 }
 
 #if compiler(>=6)
@@ -1641,12 +1641,12 @@ public struct FfiConverterTypeSatsChipStatus: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SatsChipStatus {
         return
             try SatsChipStatus(
-                proto: FfiConverterUInt32.read(from: &buf),
-                ver: FfiConverterString.read(from: &buf),
-                birth: FfiConverterUInt32.read(from: &buf),
-                path: FfiConverterOptionSequenceUInt32.read(from: &buf),
-                pubkey: FfiConverterString.read(from: &buf),
-                cardIdent: FfiConverterString.read(from: &buf),
+                proto: FfiConverterUInt32.read(from: &buf), 
+                ver: FfiConverterString.read(from: &buf), 
+                birth: FfiConverterUInt32.read(from: &buf), 
+                path: FfiConverterOptionSequenceUInt32.read(from: &buf), 
+                pubkey: FfiConverterString.read(from: &buf), 
+                cardIdent: FfiConverterString.read(from: &buf), 
                 authDelay: FfiConverterOptionUInt8.read(from: &buf)
         )
     }
@@ -1691,9 +1691,9 @@ public struct SlotDetails: Equatable, Hashable {
         self.pubkeyDescriptor = pubkeyDescriptor
     }
 
+    
 
-
-
+    
 }
 
 #if compiler(>=6)
@@ -1707,8 +1707,8 @@ public struct FfiConverterTypeSlotDetails: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SlotDetails {
         return
             try SlotDetails(
-                privkey: FfiConverterOptionString.read(from: &buf),
-                pubkey: FfiConverterString.read(from: &buf),
+                privkey: FfiConverterOptionString.read(from: &buf), 
+                pubkey: FfiConverterString.read(from: &buf), 
                 pubkeyDescriptor: FfiConverterString.read(from: &buf)
         )
     }
@@ -1759,9 +1759,9 @@ public struct TapSignerStatus: Equatable, Hashable {
         self.authDelay = authDelay
     }
 
+    
 
-
-
+    
 }
 
 #if compiler(>=6)
@@ -1775,13 +1775,13 @@ public struct FfiConverterTypeTapSignerStatus: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> TapSignerStatus {
         return
             try TapSignerStatus(
-                proto: FfiConverterUInt32.read(from: &buf),
-                ver: FfiConverterString.read(from: &buf),
-                birth: FfiConverterUInt32.read(from: &buf),
-                path: FfiConverterOptionSequenceUInt32.read(from: &buf),
-                numBackups: FfiConverterUInt32.read(from: &buf),
-                pubkey: FfiConverterString.read(from: &buf),
-                cardIdent: FfiConverterString.read(from: &buf),
+                proto: FfiConverterUInt32.read(from: &buf), 
+                ver: FfiConverterString.read(from: &buf), 
+                birth: FfiConverterUInt32.read(from: &buf), 
+                path: FfiConverterOptionSequenceUInt32.read(from: &buf), 
+                numBackups: FfiConverterUInt32.read(from: &buf), 
+                pubkey: FfiConverterString.read(from: &buf), 
+                cardIdent: FfiConverterString.read(from: &buf), 
                 authDelay: FfiConverterOptionUInt8.read(from: &buf)
         )
     }
@@ -1817,11 +1817,11 @@ public func FfiConverterTypeTapSignerStatus_lift(_ buf: RustBuffer) throws -> Ta
 /**
  * Errors returned by the CkTap card.
  */
-public
+public 
 enum CardError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
 
-
-
+    
+    
     case UnluckyNumber
     case BadArguments
     case BadAuth
@@ -1834,15 +1834,15 @@ enum CardError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
     case BackupFirst
     case RateLimited
 
+    
 
+    
 
-
-
-
+    
     public var errorDescription: String? {
         String(reflecting: self)
     }
-
+    
 }
 
 #if compiler(>=6)
@@ -1859,9 +1859,9 @@ public struct FfiConverterTypeCardError: FfiConverterRustBuffer {
         let variant: Int32 = try readInt(&buf)
         switch variant {
 
+        
 
-
-
+        
         case 1: return .UnluckyNumber
         case 2: return .BadArguments
         case 3: return .BadAuth
@@ -1881,53 +1881,53 @@ public struct FfiConverterTypeCardError: FfiConverterRustBuffer {
     public static func write(_ value: CardError, into buf: inout [UInt8]) {
         switch value {
 
+        
 
-
-
-
+        
+        
         case .UnluckyNumber:
             writeInt(&buf, Int32(1))
-
-
+        
+        
         case .BadArguments:
             writeInt(&buf, Int32(2))
-
-
+        
+        
         case .BadAuth:
             writeInt(&buf, Int32(3))
-
-
+        
+        
         case .NeedsAuth:
             writeInt(&buf, Int32(4))
-
-
+        
+        
         case .UnknownCommand:
             writeInt(&buf, Int32(5))
-
-
+        
+        
         case .InvalidCommand:
             writeInt(&buf, Int32(6))
-
-
+        
+        
         case .InvalidState:
             writeInt(&buf, Int32(7))
-
-
+        
+        
         case .WeakNonce:
             writeInt(&buf, Int32(8))
-
-
+        
+        
         case .BadCbor:
             writeInt(&buf, Int32(9))
-
-
+        
+        
         case .BackupFirst:
             writeInt(&buf, Int32(10))
-
-
+        
+        
         case .RateLimited:
             writeInt(&buf, Int32(11))
-
+        
         }
     }
 }
@@ -1951,11 +1951,11 @@ public func FfiConverterTypeCardError_lift(_ buf: RustBuffer) throws -> CardErro
 /**
  * Errors returned by the `certs` command.
  */
-public
+public 
 enum CertsError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
 
-
-
+    
+    
     case CkTap(err: CkTapError
     )
     case Key(err: KeyError
@@ -1963,15 +1963,15 @@ enum CertsError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
     case InvalidRootCert(msg: String
     )
 
+    
 
+    
 
-
-
-
+    
     public var errorDescription: String? {
         String(reflecting: self)
     }
-
+    
 }
 
 #if compiler(>=6)
@@ -1988,9 +1988,9 @@ public struct FfiConverterTypeCertsError: FfiConverterRustBuffer {
         let variant: Int32 = try readInt(&buf)
         switch variant {
 
+        
 
-
-
+        
         case 1: return .CkTap(
             err: try FfiConverterTypeCkTapError.read(from: &buf)
             )
@@ -2008,24 +2008,24 @@ public struct FfiConverterTypeCertsError: FfiConverterRustBuffer {
     public static func write(_ value: CertsError, into buf: inout [UInt8]) {
         switch value {
 
+        
 
-
-
-
+        
+        
         case let .CkTap(err):
             writeInt(&buf, Int32(1))
             FfiConverterTypeCkTapError.write(err, into: &buf)
-
-
+            
+        
         case let .Key(err):
             writeInt(&buf, Int32(2))
             FfiConverterTypeKeyError.write(err, into: &buf)
-
-
+            
+        
         case let .InvalidRootCert(msg):
             writeInt(&buf, Int32(3))
             FfiConverterString.write(msg, into: &buf)
-
+            
         }
     }
 }
@@ -2049,24 +2049,28 @@ public func FfiConverterTypeCertsError_lift(_ buf: RustBuffer) throws -> CertsEr
 /**
  * Errors returned by the `change` command.
  */
-public
+public 
 enum ChangeError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
 
-
-
+    
+    
     case CkTap(err: CkTapError
     )
     case SameAsOld
+    case CurrentCvc(err: CvcError
+    )
+    case NewCvc(err: CvcError
+    )
 
+    
 
+    
 
-
-
-
+    
     public var errorDescription: String? {
         String(reflecting: self)
     }
-
+    
 }
 
 #if compiler(>=6)
@@ -2083,13 +2087,19 @@ public struct FfiConverterTypeChangeError: FfiConverterRustBuffer {
         let variant: Int32 = try readInt(&buf)
         switch variant {
 
+        
 
-
-
+        
         case 1: return .CkTap(
             err: try FfiConverterTypeCkTapError.read(from: &buf)
             )
         case 2: return .SameAsOld
+        case 3: return .CurrentCvc(
+            err: try FfiConverterTypeCvcError.read(from: &buf)
+            )
+        case 4: return .NewCvc(
+            err: try FfiConverterTypeCvcError.read(from: &buf)
+            )
 
          default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -2098,18 +2108,28 @@ public struct FfiConverterTypeChangeError: FfiConverterRustBuffer {
     public static func write(_ value: ChangeError, into buf: inout [UInt8]) {
         switch value {
 
+        
 
-
-
-
+        
+        
         case let .CkTap(err):
             writeInt(&buf, Int32(1))
             FfiConverterTypeCkTapError.write(err, into: &buf)
-
-
+            
+        
         case .SameAsOld:
             writeInt(&buf, Int32(2))
-
+        
+        
+        case let .CurrentCvc(err):
+            writeInt(&buf, Int32(3))
+            FfiConverterTypeCvcError.write(err, into: &buf)
+            
+        
+        case let .NewCvc(err):
+            writeInt(&buf, Int32(4))
+            FfiConverterTypeCvcError.write(err, into: &buf)
+            
         }
     }
 }
@@ -2132,7 +2152,7 @@ public func FfiConverterTypeChangeError_lift(_ buf: RustBuffer) throws -> Change
 
 
 public enum CkTapCard {
-
+    
     case satsCard(SatsCard
     )
     case tapSigner(TapSigner
@@ -2159,38 +2179,38 @@ public struct FfiConverterTypeCkTapCard: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> CkTapCard {
         let variant: Int32 = try readInt(&buf)
         switch variant {
-
+        
         case 1: return .satsCard(try FfiConverterTypeSatsCard.read(from: &buf)
         )
-
+        
         case 2: return .tapSigner(try FfiConverterTypeTapSigner.read(from: &buf)
         )
-
+        
         case 3: return .satsChip(try FfiConverterTypeSatsChip.read(from: &buf)
         )
-
+        
         default: throw UniffiInternalError.unexpectedEnumCase
         }
     }
 
     public static func write(_ value: CkTapCard, into buf: inout [UInt8]) {
         switch value {
-
-
+        
+        
         case let .satsCard(v1):
             writeInt(&buf, Int32(1))
             FfiConverterTypeSatsCard.write(v1, into: &buf)
-
-
+            
+        
         case let .tapSigner(v1):
             writeInt(&buf, Int32(2))
             FfiConverterTypeTapSigner.write(v1, into: &buf)
-
-
+            
+        
         case let .satsChip(v1):
             writeInt(&buf, Int32(3))
             FfiConverterTypeSatsChip.write(v1, into: &buf)
-
+            
         }
     }
 }
@@ -2215,11 +2235,11 @@ public func FfiConverterTypeCkTapCard_lift(_ buf: RustBuffer) throws -> CkTapCar
 /**
  * Errors returned by the card, CBOR deserialization or value encoding, or the APDU transport.
  */
-public
+public 
 enum CkTapError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
 
-
-
+    
+    
     case Card(err: CardError
     )
     case CborDe(msg: String
@@ -2228,19 +2248,19 @@ enum CkTapError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
     )
     case Transport(msg: String
     )
-    case UnknownStatusWord(code: UInt16, message: String
+    case UnknownErrorCode(code: UInt16, message: String
     )
     case UnknownCardType
 
+    
 
+    
 
-
-
-
+    
     public var errorDescription: String? {
         String(reflecting: self)
     }
-
+    
 }
 
 #if compiler(>=6)
@@ -2257,9 +2277,9 @@ public struct FfiConverterTypeCkTapError: FfiConverterRustBuffer {
         let variant: Int32 = try readInt(&buf)
         switch variant {
 
+        
 
-
-
+        
         case 1: return .Card(
             err: try FfiConverterTypeCardError.read(from: &buf)
             )
@@ -2272,8 +2292,8 @@ public struct FfiConverterTypeCkTapError: FfiConverterRustBuffer {
         case 4: return .Transport(
             msg: try FfiConverterString.read(from: &buf)
             )
-        case 5: return .UnknownStatusWord(
-            code: try FfiConverterUInt16.read(from: &buf),
+        case 5: return .UnknownErrorCode(
+            code: try FfiConverterUInt16.read(from: &buf), 
             message: try FfiConverterString.read(from: &buf)
             )
         case 6: return .UnknownCardType
@@ -2285,39 +2305,39 @@ public struct FfiConverterTypeCkTapError: FfiConverterRustBuffer {
     public static func write(_ value: CkTapError, into buf: inout [UInt8]) {
         switch value {
 
+        
 
-
-
-
+        
+        
         case let .Card(err):
             writeInt(&buf, Int32(1))
             FfiConverterTypeCardError.write(err, into: &buf)
-
-
+            
+        
         case let .CborDe(msg):
             writeInt(&buf, Int32(2))
             FfiConverterString.write(msg, into: &buf)
-
-
+            
+        
         case let .CborValue(msg):
             writeInt(&buf, Int32(3))
             FfiConverterString.write(msg, into: &buf)
-
-
+            
+        
         case let .Transport(msg):
             writeInt(&buf, Int32(4))
             FfiConverterString.write(msg, into: &buf)
-
-
-        case let .UnknownStatusWord(code,message):
+            
+        
+        case let .UnknownErrorCode(code,message):
             writeInt(&buf, Int32(5))
             FfiConverterUInt16.write(code, into: &buf)
             FfiConverterString.write(message, into: &buf)
-
-
+            
+        
         case .UnknownCardType:
             writeInt(&buf, Int32(6))
-
+        
         }
     }
 }
@@ -2339,29 +2359,129 @@ public func FfiConverterTypeCkTapError_lift(_ buf: RustBuffer) throws -> CkTapEr
 
 
 /**
+ * Errors returned when a CVC does not satisfy its local constraints
+ */
+public 
+enum CvcError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
+
+    
+    
+    case TooShort(length: UInt32
+    )
+    case TooLong(length: UInt32
+    )
+    case NonAsciiDigit(index: UInt32
+    )
+
+    
+
+    
+
+    
+    public var errorDescription: String? {
+        String(reflecting: self)
+    }
+    
+}
+
+#if compiler(>=6)
+extension CvcError: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeCvcError: FfiConverterRustBuffer {
+    typealias SwiftType = CvcError
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> CvcError {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+
+        
+
+        
+        case 1: return .TooShort(
+            length: try FfiConverterUInt32.read(from: &buf)
+            )
+        case 2: return .TooLong(
+            length: try FfiConverterUInt32.read(from: &buf)
+            )
+        case 3: return .NonAsciiDigit(
+            index: try FfiConverterUInt32.read(from: &buf)
+            )
+
+         default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: CvcError, into buf: inout [UInt8]) {
+        switch value {
+
+        
+
+        
+        
+        case let .TooShort(length):
+            writeInt(&buf, Int32(1))
+            FfiConverterUInt32.write(length, into: &buf)
+            
+        
+        case let .TooLong(length):
+            writeInt(&buf, Int32(2))
+            FfiConverterUInt32.write(length, into: &buf)
+            
+        
+        case let .NonAsciiDigit(index):
+            writeInt(&buf, Int32(3))
+            FfiConverterUInt32.write(index, into: &buf)
+            
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCvcError_lift(_ buf: RustBuffer) throws -> CvcError {
+    return try FfiConverterTypeCvcError.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+@Sendable public func FfiConverterTypeCvcError_lower(_ value: CvcError) -> RustBuffer {
+    return FfiConverterTypeCvcError.lower(value)
+}
+
+
+/**
  * Errors returned by the `derive` command.
  */
-public
+public 
 enum DeriveError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
 
-
-
+    
+    
     case CkTap(err: CkTapError
     )
     case Key(err: KeyError
     )
     case InvalidChainCode(msg: String
     )
+    case Cvc(err: CvcError
+    )
 
+    
 
+    
 
-
-
-
+    
     public var errorDescription: String? {
         String(reflecting: self)
     }
-
+    
 }
 
 #if compiler(>=6)
@@ -2378,9 +2498,9 @@ public struct FfiConverterTypeDeriveError: FfiConverterRustBuffer {
         let variant: Int32 = try readInt(&buf)
         switch variant {
 
+        
 
-
-
+        
         case 1: return .CkTap(
             err: try FfiConverterTypeCkTapError.read(from: &buf)
             )
@@ -2390,6 +2510,9 @@ public struct FfiConverterTypeDeriveError: FfiConverterRustBuffer {
         case 3: return .InvalidChainCode(
             msg: try FfiConverterString.read(from: &buf)
             )
+        case 4: return .Cvc(
+            err: try FfiConverterTypeCvcError.read(from: &buf)
+            )
 
          default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -2398,24 +2521,29 @@ public struct FfiConverterTypeDeriveError: FfiConverterRustBuffer {
     public static func write(_ value: DeriveError, into buf: inout [UInt8]) {
         switch value {
 
+        
 
-
-
-
+        
+        
         case let .CkTap(err):
             writeInt(&buf, Int32(1))
             FfiConverterTypeCkTapError.write(err, into: &buf)
-
-
+            
+        
         case let .Key(err):
             writeInt(&buf, Int32(2))
             FfiConverterTypeKeyError.write(err, into: &buf)
-
-
+            
+        
         case let .InvalidChainCode(msg):
             writeInt(&buf, Int32(3))
             FfiConverterString.write(msg, into: &buf)
-
+            
+        
+        case let .Cvc(err):
+            writeInt(&buf, Int32(4))
+            FfiConverterTypeCvcError.write(err, into: &buf)
+            
         }
     }
 }
@@ -2439,11 +2567,11 @@ public func FfiConverterTypeDeriveError_lift(_ buf: RustBuffer) throws -> Derive
 /**
  * Errors returned by the `dump` command.
  */
-public
+public 
 enum DumpError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
 
-
-
+    
+    
     case CkTap(err: CkTapError
     )
     case Key(err: KeyError
@@ -2459,16 +2587,18 @@ enum DumpError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
      */
     case SlotTampered(slot: UInt8
     )
+    case Cvc(err: CvcError
+    )
 
+    
 
+    
 
-
-
-
+    
     public var errorDescription: String? {
         String(reflecting: self)
     }
-
+    
 }
 
 #if compiler(>=6)
@@ -2485,9 +2615,9 @@ public struct FfiConverterTypeDumpError: FfiConverterRustBuffer {
         let variant: Int32 = try readInt(&buf)
         switch variant {
 
+        
 
-
-
+        
         case 1: return .CkTap(
             err: try FfiConverterTypeCkTapError.read(from: &buf)
             )
@@ -2503,6 +2633,9 @@ public struct FfiConverterTypeDumpError: FfiConverterRustBuffer {
         case 5: return .SlotTampered(
             slot: try FfiConverterUInt8.read(from: &buf)
             )
+        case 6: return .Cvc(
+            err: try FfiConverterTypeCvcError.read(from: &buf)
+            )
 
          default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -2511,34 +2644,39 @@ public struct FfiConverterTypeDumpError: FfiConverterRustBuffer {
     public static func write(_ value: DumpError, into buf: inout [UInt8]) {
         switch value {
 
+        
 
-
-
-
+        
+        
         case let .CkTap(err):
             writeInt(&buf, Int32(1))
             FfiConverterTypeCkTapError.write(err, into: &buf)
-
-
+            
+        
         case let .Key(err):
             writeInt(&buf, Int32(2))
             FfiConverterTypeKeyError.write(err, into: &buf)
-
-
+            
+        
         case let .SlotSealed(slot):
             writeInt(&buf, Int32(3))
             FfiConverterUInt8.write(slot, into: &buf)
-
-
+            
+        
         case let .SlotUnused(slot):
             writeInt(&buf, Int32(4))
             FfiConverterUInt8.write(slot, into: &buf)
-
-
+            
+        
         case let .SlotTampered(slot):
             writeInt(&buf, Int32(5))
             FfiConverterUInt8.write(slot, into: &buf)
-
+            
+        
+        case let .Cvc(err):
+            writeInt(&buf, Int32(6))
+            FfiConverterTypeCvcError.write(err, into: &buf)
+            
         }
     }
 }
@@ -2559,25 +2697,113 @@ public func FfiConverterTypeDumpError_lift(_ buf: RustBuffer) throws -> DumpErro
 }
 
 
-public
+/**
+ * Errors returned by the `init` command
+ */
+public 
+enum InitError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
+
+    
+    
+    case CkTap(err: CkTapError
+    )
+    case Cvc(err: CvcError
+    )
+
+    
+
+    
+
+    
+    public var errorDescription: String? {
+        String(reflecting: self)
+    }
+    
+}
+
+#if compiler(>=6)
+extension InitError: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeInitError: FfiConverterRustBuffer {
+    typealias SwiftType = InitError
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> InitError {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+
+        
+
+        
+        case 1: return .CkTap(
+            err: try FfiConverterTypeCkTapError.read(from: &buf)
+            )
+        case 2: return .Cvc(
+            err: try FfiConverterTypeCvcError.read(from: &buf)
+            )
+
+         default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: InitError, into buf: inout [UInt8]) {
+        switch value {
+
+        
+
+        
+        
+        case let .CkTap(err):
+            writeInt(&buf, Int32(1))
+            FfiConverterTypeCkTapError.write(err, into: &buf)
+            
+        
+        case let .Cvc(err):
+            writeInt(&buf, Int32(2))
+            FfiConverterTypeCvcError.write(err, into: &buf)
+            
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeInitError_lift(_ buf: RustBuffer) throws -> InitError {
+    return try FfiConverterTypeInitError.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+@Sendable public func FfiConverterTypeInitError_lower(_ value: InitError) -> RustBuffer {
+    return FfiConverterTypeInitError.lower(value)
+}
+
+
+public 
 enum KeyError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
 
-
-
+    
+    
     case Secp256k1(msg: String
     )
     case KeyFromSlice(msg: String
     )
 
+    
 
+    
 
-
-
-
+    
     public var errorDescription: String? {
         String(reflecting: self)
     }
-
+    
 }
 
 #if compiler(>=6)
@@ -2594,9 +2820,9 @@ public struct FfiConverterTypeKeyError: FfiConverterRustBuffer {
         let variant: Int32 = try readInt(&buf)
         switch variant {
 
+        
 
-
-
+        
         case 1: return .Secp256k1(
             msg: try FfiConverterString.read(from: &buf)
             )
@@ -2611,19 +2837,19 @@ public struct FfiConverterTypeKeyError: FfiConverterRustBuffer {
     public static func write(_ value: KeyError, into buf: inout [UInt8]) {
         switch value {
 
+        
 
-
-
-
+        
+        
         case let .Secp256k1(msg):
             writeInt(&buf, Int32(1))
             FfiConverterString.write(msg, into: &buf)
-
-
+            
+        
         case let .KeyFromSlice(msg):
             writeInt(&buf, Int32(2))
             FfiConverterString.write(msg, into: &buf)
-
+            
         }
     }
 }
@@ -2647,25 +2873,27 @@ public func FfiConverterTypeKeyError_lift(_ buf: RustBuffer) throws -> KeyError 
 /**
  * Errors returned by the `read` command.
  */
-public
+public 
 enum ReadError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
 
-
-
+    
+    
     case CkTap(err: CkTapError
     )
     case Key(err: KeyError
     )
+    case Cvc(err: CvcError
+    )
 
+    
 
+    
 
-
-
-
+    
     public var errorDescription: String? {
         String(reflecting: self)
     }
-
+    
 }
 
 #if compiler(>=6)
@@ -2682,14 +2910,17 @@ public struct FfiConverterTypeReadError: FfiConverterRustBuffer {
         let variant: Int32 = try readInt(&buf)
         switch variant {
 
+        
 
-
-
+        
         case 1: return .CkTap(
             err: try FfiConverterTypeCkTapError.read(from: &buf)
             )
         case 2: return .Key(
             err: try FfiConverterTypeKeyError.read(from: &buf)
+            )
+        case 3: return .Cvc(
+            err: try FfiConverterTypeCvcError.read(from: &buf)
             )
 
          default: throw UniffiInternalError.unexpectedEnumCase
@@ -2699,19 +2930,24 @@ public struct FfiConverterTypeReadError: FfiConverterRustBuffer {
     public static func write(_ value: ReadError, into buf: inout [UInt8]) {
         switch value {
 
+        
 
-
-
-
+        
+        
         case let .CkTap(err):
             writeInt(&buf, Int32(1))
             FfiConverterTypeCkTapError.write(err, into: &buf)
-
-
+            
+        
         case let .Key(err):
             writeInt(&buf, Int32(2))
             FfiConverterTypeKeyError.write(err, into: &buf)
-
+            
+        
+        case let .Cvc(err):
+            writeInt(&buf, Int32(3))
+            FfiConverterTypeCvcError.write(err, into: &buf)
+            
         }
     }
 }
@@ -2732,11 +2968,11 @@ public func FfiConverterTypeReadError_lift(_ buf: RustBuffer) throws -> ReadErro
 }
 
 
-public
+public 
 enum SignPsbtError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
 
-
-
+    
+    
     case InvalidPath(index: UInt32
     )
     case InvalidScript(index: UInt32
@@ -2761,16 +2997,18 @@ enum SignPsbtError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError 
     )
     case Base64Encoding(msg: String
     )
+    case Cvc(err: CvcError
+    )
 
+    
 
+    
 
-
-
-
+    
     public var errorDescription: String? {
         String(reflecting: self)
     }
-
+    
 }
 
 #if compiler(>=6)
@@ -2787,9 +3025,9 @@ public struct FfiConverterTypeSignPsbtError: FfiConverterRustBuffer {
         let variant: Int32 = try readInt(&buf)
         switch variant {
 
+        
 
-
-
+        
         case 1: return .InvalidPath(
             index: try FfiConverterUInt32.read(from: &buf)
             )
@@ -2826,6 +3064,9 @@ public struct FfiConverterTypeSignPsbtError: FfiConverterRustBuffer {
         case 12: return .Base64Encoding(
             msg: try FfiConverterString.read(from: &buf)
             )
+        case 13: return .Cvc(
+            err: try FfiConverterTypeCvcError.read(from: &buf)
+            )
 
          default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -2834,69 +3075,74 @@ public struct FfiConverterTypeSignPsbtError: FfiConverterRustBuffer {
     public static func write(_ value: SignPsbtError, into buf: inout [UInt8]) {
         switch value {
 
+        
 
-
-
-
+        
+        
         case let .InvalidPath(index):
             writeInt(&buf, Int32(1))
             FfiConverterUInt32.write(index, into: &buf)
-
-
+            
+        
         case let .InvalidScript(index):
             writeInt(&buf, Int32(2))
             FfiConverterUInt32.write(index, into: &buf)
-
-
+            
+        
         case let .MissingPubkey(index):
             writeInt(&buf, Int32(3))
             FfiConverterUInt32.write(index, into: &buf)
-
-
+            
+        
         case let .MissingUtxo(index):
             writeInt(&buf, Int32(4))
             FfiConverterUInt32.write(index, into: &buf)
-
-
+            
+        
         case let .PubkeyMismatch(index):
             writeInt(&buf, Int32(5))
             FfiConverterUInt32.write(index, into: &buf)
-
-
+            
+        
         case let .SighashError(msg):
             writeInt(&buf, Int32(6))
             FfiConverterString.write(msg, into: &buf)
-
-
+            
+        
         case let .SignatureError(msg):
             writeInt(&buf, Int32(7))
             FfiConverterString.write(msg, into: &buf)
-
-
+            
+        
         case let .SlotNotUnsealed(slot):
             writeInt(&buf, Int32(8))
             FfiConverterUInt8.write(slot, into: &buf)
-
-
+            
+        
         case let .CkTap(err):
             writeInt(&buf, Int32(9))
             FfiConverterTypeCkTapError.write(err, into: &buf)
-
-
+            
+        
         case let .WitnessProgram(msg):
             writeInt(&buf, Int32(10))
             FfiConverterString.write(msg, into: &buf)
-
-
+            
+        
         case let .PsbtEncoding(msg):
             writeInt(&buf, Int32(11))
             FfiConverterString.write(msg, into: &buf)
-
-
+            
+        
         case let .Base64Encoding(msg):
             writeInt(&buf, Int32(12))
             FfiConverterString.write(msg, into: &buf)
-
+            
+        
+        case let .Cvc(err):
+            writeInt(&buf, Int32(13))
+            FfiConverterTypeCvcError.write(err, into: &buf)
+            
         }
     }
 }
@@ -2920,25 +3166,25 @@ public func FfiConverterTypeSignPsbtError_lift(_ buf: RustBuffer) throws -> Sign
 /**
  * Errors returned by the `status` command.
  */
-public
+public 
 enum StatusError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
 
-
-
+    
+    
     case CkTap(err: CkTapError
     )
     case Key(err: KeyError
     )
 
+    
 
+    
 
-
-
-
+    
     public var errorDescription: String? {
         String(reflecting: self)
     }
-
+    
 }
 
 #if compiler(>=6)
@@ -2955,9 +3201,9 @@ public struct FfiConverterTypeStatusError: FfiConverterRustBuffer {
         let variant: Int32 = try readInt(&buf)
         switch variant {
 
+        
 
-
-
+        
         case 1: return .CkTap(
             err: try FfiConverterTypeCkTapError.read(from: &buf)
             )
@@ -2972,19 +3218,19 @@ public struct FfiConverterTypeStatusError: FfiConverterRustBuffer {
     public static func write(_ value: StatusError, into buf: inout [UInt8]) {
         switch value {
 
+        
 
-
-
-
+        
+        
         case let .CkTap(err):
             writeInt(&buf, Int32(1))
             FfiConverterTypeCkTapError.write(err, into: &buf)
-
-
+            
+        
         case let .Key(err):
             writeInt(&buf, Int32(2))
             FfiConverterTypeKeyError.write(err, into: &buf)
-
+            
         }
     }
 }
@@ -3008,25 +3254,27 @@ public func FfiConverterTypeStatusError_lift(_ buf: RustBuffer) throws -> Status
 /**
  * Errors returned by the `unseal` command.
  */
-public
+public 
 enum UnsealError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
 
-
-
+    
+    
     case CkTap(err: CkTapError
     )
     case Key(err: KeyError
     )
+    case Cvc(err: CvcError
+    )
 
+    
 
+    
 
-
-
-
+    
     public var errorDescription: String? {
         String(reflecting: self)
     }
-
+    
 }
 
 #if compiler(>=6)
@@ -3043,14 +3291,17 @@ public struct FfiConverterTypeUnsealError: FfiConverterRustBuffer {
         let variant: Int32 = try readInt(&buf)
         switch variant {
 
+        
 
-
-
+        
         case 1: return .CkTap(
             err: try FfiConverterTypeCkTapError.read(from: &buf)
             )
         case 2: return .Key(
             err: try FfiConverterTypeKeyError.read(from: &buf)
+            )
+        case 3: return .Cvc(
+            err: try FfiConverterTypeCvcError.read(from: &buf)
             )
 
          default: throw UniffiInternalError.unexpectedEnumCase
@@ -3060,19 +3311,24 @@ public struct FfiConverterTypeUnsealError: FfiConverterRustBuffer {
     public static func write(_ value: UnsealError, into buf: inout [UInt8]) {
         switch value {
 
+        
 
-
-
-
+        
+        
         case let .CkTap(err):
             writeInt(&buf, Int32(1))
             FfiConverterTypeCkTapError.write(err, into: &buf)
-
-
+            
+        
         case let .Key(err):
             writeInt(&buf, Int32(2))
             FfiConverterTypeKeyError.write(err, into: &buf)
-
+            
+        
+        case let .Cvc(err):
+            writeInt(&buf, Int32(3))
+            FfiConverterTypeCvcError.write(err, into: &buf)
+            
         }
     }
 }
@@ -3096,25 +3352,27 @@ public func FfiConverterTypeUnsealError_lift(_ buf: RustBuffer) throws -> Unseal
 /**
  * Errors returned by the `xpub` command.
  */
-public
+public 
 enum XpubError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
 
-
-
+    
+    
     case CkTap(err: CkTapError
     )
     case Bip32(msg: String
     )
+    case Cvc(err: CvcError
+    )
 
+    
 
+    
 
-
-
-
+    
     public var errorDescription: String? {
         String(reflecting: self)
     }
-
+    
 }
 
 #if compiler(>=6)
@@ -3131,14 +3389,17 @@ public struct FfiConverterTypeXpubError: FfiConverterRustBuffer {
         let variant: Int32 = try readInt(&buf)
         switch variant {
 
+        
 
-
-
+        
         case 1: return .CkTap(
             err: try FfiConverterTypeCkTapError.read(from: &buf)
             )
         case 2: return .Bip32(
             msg: try FfiConverterString.read(from: &buf)
+            )
+        case 3: return .Cvc(
+            err: try FfiConverterTypeCvcError.read(from: &buf)
             )
 
          default: throw UniffiInternalError.unexpectedEnumCase
@@ -3148,19 +3409,24 @@ public struct FfiConverterTypeXpubError: FfiConverterRustBuffer {
     public static func write(_ value: XpubError, into buf: inout [UInt8]) {
         switch value {
 
+        
 
-
-
-
+        
+        
         case let .CkTap(err):
             writeInt(&buf, Int32(1))
             FfiConverterTypeCkTapError.write(err, into: &buf)
-
-
+            
+        
         case let .Bip32(msg):
             writeInt(&buf, Int32(2))
             FfiConverterString.write(msg, into: &buf)
-
+            
+        
+        case let .Cvc(err):
+            writeInt(&buf, Int32(3))
+            FfiConverterTypeCvcError.write(err, into: &buf)
+            
         }
     }
 }
@@ -3184,9 +3450,9 @@ public func FfiConverterTypeXpubError_lift(_ buf: RustBuffer) throws -> XpubErro
 
 
 public protocol CkTransport: AnyObject, Sendable {
-
+    
     func transmitApdu(commandApdu: Data) async throws  -> Data
-
+    
 }
 
 
@@ -3642,7 +3908,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_cktap_ffi_checksum_method_satschip_derive() != 50805) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_cktap_ffi_checksum_method_satschip_init() != 498) {
+    if (uniffi_cktap_ffi_checksum_method_satschip_init() != 42524) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_cktap_ffi_checksum_method_satschip_nfc() != 27858) {
@@ -3672,7 +3938,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_cktap_ffi_checksum_method_tapsigner_derive() != 31084) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_cktap_ffi_checksum_method_tapsigner_init() != 29775) {
+    if (uniffi_cktap_ffi_checksum_method_tapsigner_init() != 26344) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_cktap_ffi_checksum_method_tapsigner_nfc() != 15163) {
