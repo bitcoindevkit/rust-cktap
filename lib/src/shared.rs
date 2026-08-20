@@ -1,7 +1,7 @@
 // Copyright (c) 2025 rust-cktap contributors
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
-use crate::{CardError, CkTapCard, CkTapError, SatsCard, TapSigner};
+use crate::{CardError, CkTapCard, CkTapError, Cvc, SatsCard, TapSigner};
 use crate::{apdu::*, rand_nonce};
 
 use bitcoin::key::{PublicKey, rand};
@@ -92,7 +92,7 @@ pub trait Authentication {
     /// ref: ["Authenticating Commands with CVC"](https://github.com/coinkite/coinkite-tap-proto/blob/master/docs/protocol.md#authenticating-commands-with-cvc)
     fn calc_ekeys_xcvc(
         &self,
-        cvc: &str,
+        cvc: &Cvc,
         command: &str,
     ) -> (secp256k1::SecretKey, secp256k1::PublicKey, Vec<u8>) {
         let secp = Self::secp(self);
@@ -144,6 +144,169 @@ mod card_ident_tests {
         .expect("valid pubkey hex");
         let pubkey = PublicKey::from_slice(&pubkey_bytes).expect("compressed pubkey");
         assert_eq!(card_pubkey_to_ident(&pubkey), "IYKC5-XN6ZN-3AGAA-BWABB");
+    }
+}
+
+#[cfg(test)]
+mod authentication_tests {
+    use super::*;
+    use crate::Cvc;
+    use async_trait::async_trait;
+    use bitcoin::key::PublicKey;
+    use std::collections::VecDeque;
+    use std::sync::Mutex;
+
+    struct TestTransport;
+
+    #[async_trait]
+    impl CkTransport for TestTransport {
+        async fn transmit_apdu(&self, _command_apdu: Vec<u8>) -> Result<Vec<u8>, CkTapError> {
+            unreachable!("authentication vector tests do not transmit APDUs")
+        }
+    }
+
+    struct TestAuthentication {
+        secp: Secp256k1<All>,
+        pubkey: PublicKey,
+        card_nonce: [u8; 16],
+        auth_delay: Option<u8>,
+        transport: Arc<dyn CkTransport>,
+    }
+
+    impl Authentication for TestAuthentication {
+        fn secp(&self) -> &Secp256k1<All> {
+            &self.secp
+        }
+
+        fn ver(&self) -> &str {
+            "test"
+        }
+
+        fn pubkey(&self) -> &PublicKey {
+            &self.pubkey
+        }
+
+        fn card_nonce(&self) -> &[u8; 16] {
+            &self.card_nonce
+        }
+
+        fn set_card_nonce(&mut self, new_nonce: [u8; 16]) {
+            self.card_nonce = new_nonce;
+        }
+
+        fn auth_delay(&self) -> Option<u8> {
+            self.auth_delay
+        }
+
+        fn set_auth_delay(&mut self, auth_delay: Option<u8>) {
+            self.auth_delay = auth_delay;
+        }
+
+        fn transport(&self) -> Arc<dyn CkTransport> {
+            self.transport.clone()
+        }
+    }
+
+    impl Wait for TestAuthentication {}
+
+    #[test]
+    fn xcvc_xors_exact_ascii_cvc_bytes() {
+        let secp = Secp256k1::new();
+        let (_, card_pubkey) = secp.generate_keypair(&mut rand::thread_rng());
+        let card_pubkey = PublicKey::new(card_pubkey);
+        let card_nonce = [0x42; 16];
+        let authentication = TestAuthentication {
+            secp: secp.clone(),
+            pubkey: card_pubkey,
+            card_nonce,
+            auth_delay: None,
+            transport: Arc::new(TestTransport),
+        };
+        let cvc = Cvc::try_from("907856").expect("test CVC is valid");
+        let command = "read";
+
+        let (ephemeral_private_key, _, encrypted_cvc) =
+            authentication.calc_ekeys_xcvc(&cvc, command);
+        let session_key = SharedSecret::new(&authentication.pubkey.inner, &ephemeral_private_key);
+        let digest_hash = sha256::Hash::hash(&[card_nonce.as_slice(), command.as_bytes()].concat());
+        let digest: &[u8; 32] = digest_hash.as_ref();
+        let expected: Vec<u8> = cvc
+            .as_bytes()
+            .iter()
+            .zip(session_key.as_ref().iter().zip(digest.iter()))
+            .map(|(cvc_byte, (session_byte, digest_byte))| cvc_byte ^ session_byte ^ digest_byte)
+            .collect::<Vec<_>>();
+
+        assert_eq!(encrypted_cvc, expected);
+    }
+
+    struct WaitTransport(Mutex<VecDeque<Vec<u8>>>);
+
+    #[async_trait]
+    impl CkTransport for WaitTransport {
+        async fn transmit_apdu(&self, _command_apdu: Vec<u8>) -> Result<Vec<u8>, CkTapError> {
+            self.0
+                .lock()
+                .expect("wait response queue lock")
+                .pop_front()
+                .ok_or_else(|| CkTapError::Transport("wait response queue is empty".to_string()))
+        }
+    }
+
+    #[derive(serde::Serialize)]
+    struct WaitResponseFixture {
+        success: bool,
+        auth_delay: u8,
+    }
+
+    fn wait_authentication(success: bool, auth_delay: u8) -> TestAuthentication {
+        let secp = Secp256k1::new();
+        let (_, card_pubkey) = secp.generate_keypair(&mut rand::thread_rng());
+        let response = WaitResponseFixture {
+            success,
+            auth_delay,
+        };
+        let mut response_bytes = Vec::new();
+        ciborium::ser::into_writer(&response, &mut response_bytes)
+            .expect("wait response fixture serializes");
+
+        TestAuthentication {
+            secp,
+            pubkey: PublicKey::new(card_pubkey),
+            card_nonce: [0x42; 16],
+            auth_delay: None,
+            transport: Arc::new(WaitTransport(Mutex::new(VecDeque::from([response_bytes])))),
+        }
+    }
+
+    #[tokio::test]
+    async fn wait_rejects_unsuccessful_response_even_with_zero_delay() {
+        let mut authentication = wait_authentication(false, 0);
+
+        let error = authentication.wait(None).await.unwrap_err();
+
+        assert_eq!(error, CkTapError::Card(CardError::BadAuth));
+        assert_eq!(authentication.auth_delay(), None);
+    }
+
+    #[tokio::test]
+    async fn wait_returns_no_delay_after_success_at_zero() {
+        let mut authentication = wait_authentication(true, 0);
+
+        let result = authentication.wait(None).await.unwrap();
+
+        assert_eq!(result, None);
+        assert_eq!(authentication.auth_delay(), None);
+    }
+
+    #[tokio::test]
+    async fn wait_records_delay_before_returning_bad_auth() {
+        let mut authentication = wait_authentication(false, 3);
+
+        let error = authentication.wait(None).await.unwrap_err();
+
+        assert_eq!(error, CkTapError::Card(CardError::BadAuth));
+        assert_eq!(authentication.auth_delay(), Some(3));
     }
 }
 
@@ -200,7 +363,7 @@ pub trait Read: Authentication {
 
     fn slot(&self) -> Option<u8>;
 
-    async fn read(&mut self, cvc: Option<String>) -> Result<PublicKey, ReadError> {
+    async fn read(&mut self, cvc: Option<Cvc>) -> Result<PublicKey, ReadError> {
         let card_nonce = *self.card_nonce();
         let app_nonce = rand_nonce();
 
@@ -249,7 +412,7 @@ pub trait Read: Authentication {
 
 #[async_trait]
 pub trait Wait: Authentication {
-    async fn wait(&mut self, cvc: Option<String>) -> Result<Option<u8>, CkTapError> {
+    async fn wait(&mut self, cvc: Option<Cvc>) -> Result<Option<u8>, CkTapError> {
         let epubkey_xcvc = cvc.map(|cvc| {
             let (_, epubkey, xcvc) = self.calc_ekeys_xcvc(&cvc, WaitCommand::name());
             (epubkey, xcvc)
@@ -262,15 +425,14 @@ pub trait Wait: Authentication {
         let wait_command = WaitCommand::new(epubkey, xcvc);
 
         let wait_response: WaitResponse = transmit(self.transport(), &wait_command).await?;
-        // TODO throw error if success == false
-        if wait_response.auth_delay > 0 {
-            let auth_delay = Some(wait_response.auth_delay);
-            self.set_auth_delay(auth_delay);
-            Ok(auth_delay)
-        } else {
-            self.set_auth_delay(None);
-            Ok(None)
+        let auth_delay = (wait_response.auth_delay > 0).then_some(wait_response.auth_delay);
+        self.set_auth_delay(auth_delay);
+
+        if !wait_response.success {
+            return Err(CkTapError::Card(CardError::BadAuth));
         }
+
+        Ok(auth_delay)
     }
 }
 
@@ -540,7 +702,7 @@ mod tests {
     use super::*;
     use std::path::Path;
 
-    use crate::emulator::CVC;
+    use crate::Cvc;
     use crate::emulator::find_emulator;
     use crate::emulator::test::{CardTypeOption, EcardSubprocess};
     use crate::rand_chaincode;
@@ -558,27 +720,31 @@ mod tests {
                 CkTapCard::SatsCard(mut sc) => {
                     assert_eq!(card_type, CardTypeOption::SatsCard);
                     let current_slot = sc.slots.0;
-                    let response = sc.unseal(current_slot, CVC).await;
+                    let cvc = Cvc::try_from("123456").unwrap();
+                    let response = sc.unseal(current_slot, &cvc).await;
                     assert!(response.is_ok());
-                    let response = sc.new_slot(current_slot + 1, Some(chain_code), CVC).await;
+                    let response = sc.new_slot(current_slot + 1, Some(chain_code), &cvc).await;
                     assert!(response.is_ok());
                     assert_eq!(sc.slots.0, current_slot + 1);
                     // test with no new chain_code
                     let current_slot = sc.slots.0;
-                    let response = sc.unseal(current_slot, CVC).await;
+                    let cvc = Cvc::try_from("123456").unwrap();
+                    let response = sc.unseal(current_slot, &cvc).await;
                     assert!(response.is_ok());
-                    let response = sc.new_slot(current_slot + 1, None, CVC).await;
+                    let response = sc.new_slot(current_slot + 1, None, &cvc).await;
                     assert!(response.is_ok());
                     assert_eq!(sc.slots.0, current_slot + 1);
                 }
                 CkTapCard::TapSigner(mut ts) => {
                     assert_eq!(card_type, CardTypeOption::TapSigner);
-                    let response = ts.init(chain_code, CVC).await;
+                    let cvc = Cvc::try_from("123456").unwrap();
+                    let response = ts.init(chain_code, &cvc).await;
                     assert!(response.is_ok())
                 }
                 CkTapCard::SatsChip(mut sc) => {
                     assert_eq!(card_type, CardTypeOption::SatsChip);
-                    let response = sc.init(chain_code, CVC).await;
+                    let cvc = Cvc::try_from("123456").unwrap();
+                    let response = sc.init(chain_code, &cvc).await;
                     assert!(response.is_ok())
                 }
             };

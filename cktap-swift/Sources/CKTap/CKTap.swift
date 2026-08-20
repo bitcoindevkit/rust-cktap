@@ -7,8 +7,8 @@ import Foundation
 // Depending on the consumer's build setup, the low-level FFI code
 // might be in a separate module, or it might be compiled inline into
 // this module. This is a bit of light hackery to work with both.
-#if canImport(cktap_ffiFFI)
-import cktap_ffiFFI
+#if canImport(CKTapFFI)
+import CKTapFFI
 #endif
 
 fileprivate extension RustBuffer {
@@ -38,6 +38,52 @@ fileprivate extension RustBuffer {
 fileprivate extension ForeignBytes {
     init(bufferPointer: UnsafeBufferPointer<UInt8>) {
         self.init(len: Int32(bufferPointer.count), data: bufferPointer.baseAddress)
+    }
+
+    init(rawBufferPointer: UnsafeRawBufferPointer) {
+        self.init(
+            len: Int32(rawBufferPointer.count),
+            data: rawBufferPointer.baseAddress?.assumingMemoryBound(to: UInt8.self)
+        )
+    }
+}
+
+// Converter for `&[u8]` / `[ByRef] bytes` arguments.
+//
+// Conforms to `FfiConverter` so the compiler enforces the full converter
+// method set. Only the scope-bound `lower(_:_body:)` overload is sound —
+// zero-copy byte buffers only flow foreign -> Rust, and only in argument
+// position. The four protocol-witness methods (`lift`, `lower`, `read`,
+// `write`) `fatalError` at runtime if anyone reaches them.
+//
+// The scope-bound `lower` takes a closure because the `ForeignBytes`
+// pointer is only guaranteed valid for the duration of
+// `Data.withUnsafeBytes`. Callers must run the full FFI call inside
+// the closure body.
+fileprivate enum FfiConverterByRefBytes: FfiConverter {
+    typealias SwiftType = Data
+    typealias FfiType = ForeignBytes
+
+    static func lower<R>(_ value: Data, _ body: (ForeignBytes) throws -> R) rethrows -> R {
+        return try value.withUnsafeBytes { rawBuf in
+            try body(ForeignBytes(rawBufferPointer: rawBuf))
+        }
+    }
+
+    static func lower(_ value: Data) -> ForeignBytes {
+        fatalError("ByRef bytes cannot use the plain lower: returning ForeignBytes escapes the Data.withUnsafeBytes scope. Use the scope-bound lower(_:_body:) overload instead.")
+    }
+
+    static func lift(_ value: ForeignBytes) throws -> Data {
+        fatalError("ByRef bytes cannot be lifted: zero-copy &[u8] only flows foreign->Rust")
+    }
+
+    static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Data {
+        fatalError("ByRef bytes cannot be read from a buffer: zero-copy &[u8] is only supported in argument position, not nested in records/options/etc.")
+    }
+
+    static func write(_ value: Data, into buf: inout [UInt8]) {
+        fatalError("ByRef bytes cannot be written to a buffer: zero-copy &[u8] is only supported in argument position, not nested in records/options/etc.")
     }
 }
 
@@ -441,6 +487,22 @@ fileprivate struct FfiConverterUInt8: FfiConverterPrimitive {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterUInt16: FfiConverterPrimitive {
+    typealias FfiType = UInt16
+    typealias SwiftType = UInt16
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> UInt16 {
+        return try lift(readInt(&buf))
+    }
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterUInt32: FfiConverterPrimitive {
     typealias FfiType = UInt32
     typealias SwiftType = UInt32
@@ -493,7 +555,11 @@ fileprivate struct FfiConverterString: FfiConverter {
             return String()
         }
         let bytes = UnsafeBufferPointer<UInt8>(start: value.data!, count: Int(value.len))
-        return String(bytes: bytes, encoding: String.Encoding.utf8)!
+        // Use Swift's native UTF-8 decoder; `String(bytes:encoding:.utf8)` goes
+        // through Foundation's NSString and silently strips a leading U+FEFF BOM.
+        // Invalid UTF-8 substitutes U+FFFD instead of trapping (unreachable
+        // given Rust's `String` invariant).
+        return String(decoding: bytes, as: UTF8.self)
     }
 
     public static func lower(_ value: String) -> RustBuffer {
@@ -509,7 +575,8 @@ fileprivate struct FfiConverterString: FfiConverter {
 
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> String {
         let len: Int32 = try readInt(&buf)
-        return String(bytes: try readBytes(&buf, count: Int(len)), encoding: String.Encoding.utf8)!
+        // See `lift` above for why we avoid Foundation's NSString-backed decoder here.
+        return String(decoding: try readBytes(&buf, count: Int(len)), as: UTF8.self)
     }
 
     public static func write(_ value: String, into buf: inout [UInt8]) {
@@ -652,8 +719,7 @@ open func address()async throws  -> String  {
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_cktap_ffi_fn_method_satscard_address(
-                    self.uniffiCloneHandle()
-                    
+                        self.uniffiCloneHandle()
                 )
             },
             pollFunc: ffi_cktap_ffi_rust_future_poll_rust_buffer,
@@ -672,8 +738,7 @@ open func checkCert()async throws   {
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_cktap_ffi_fn_method_satscard_check_cert(
-                    self.uniffiCloneHandle()
-                    
+                        self.uniffiCloneHandle()
                 )
             },
             pollFunc: ffi_cktap_ffi_rust_future_poll_void,
@@ -693,8 +758,7 @@ open func dump(slot: UInt8, cvc: String?)async throws  -> SlotDetails  {
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_cktap_ffi_fn_method_satscard_dump(
-                    self.uniffiCloneHandle(),
-                    FfiConverterUInt8.lower(slot),FfiConverterOptionString.lower(cvc)
+                        self.uniffiCloneHandle(),FfiConverterUInt8.lower(slot),FfiConverterOptionString.lower(cvc)
                 )
             },
             pollFunc: ffi_cktap_ffi_rust_future_poll_rust_buffer,
@@ -713,8 +777,7 @@ open func newSlot(cvc: String)async throws  -> UInt8  {
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_cktap_ffi_fn_method_satscard_new_slot(
-                    self.uniffiCloneHandle(),
-                    FfiConverterString.lower(cvc)
+                        self.uniffiCloneHandle(),FfiConverterString.lower(cvc)
                 )
             },
             pollFunc: ffi_cktap_ffi_rust_future_poll_u8,
@@ -733,8 +796,7 @@ open func nfc()async throws  -> String  {
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_cktap_ffi_fn_method_satscard_nfc(
-                    self.uniffiCloneHandle()
-                    
+                        self.uniffiCloneHandle()
                 )
             },
             pollFunc: ffi_cktap_ffi_rust_future_poll_rust_buffer,
@@ -753,8 +815,7 @@ open func read()async throws  -> String  {
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_cktap_ffi_fn_method_satscard_read(
-                    self.uniffiCloneHandle()
-                    
+                        self.uniffiCloneHandle()
                 )
             },
             pollFunc: ffi_cktap_ffi_rust_future_poll_rust_buffer,
@@ -773,8 +834,7 @@ open func signPsbt(slot: UInt8, psbt: String, cvc: String)async throws  -> Strin
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_cktap_ffi_fn_method_satscard_sign_psbt(
-                    self.uniffiCloneHandle(),
-                    FfiConverterUInt8.lower(slot),FfiConverterString.lower(psbt),FfiConverterString.lower(cvc)
+                        self.uniffiCloneHandle(),FfiConverterUInt8.lower(slot),FfiConverterString.lower(psbt),FfiConverterString.lower(cvc)
                 )
             },
             pollFunc: ffi_cktap_ffi_rust_future_poll_rust_buffer,
@@ -790,8 +850,7 @@ open func status()async  -> SatsCardStatus  {
         try!  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_cktap_ffi_fn_method_satscard_status(
-                    self.uniffiCloneHandle()
-                    
+                        self.uniffiCloneHandle()
                 )
             },
             pollFunc: ffi_cktap_ffi_rust_future_poll_rust_buffer,
@@ -811,8 +870,7 @@ open func unseal(cvc: String)async throws  -> SlotDetails  {
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_cktap_ffi_fn_method_satscard_unseal(
-                    self.uniffiCloneHandle(),
-                    FfiConverterString.lower(cvc)
+                        self.uniffiCloneHandle(),FfiConverterString.lower(cvc)
                 )
             },
             pollFunc: ffi_cktap_ffi_rust_future_poll_rust_buffer,
@@ -831,8 +889,7 @@ open func wait()async throws  -> UInt8?  {
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_cktap_ffi_fn_method_satscard_wait(
-                    self.uniffiCloneHandle()
-                    
+                        self.uniffiCloneHandle()
                 )
             },
             pollFunc: ffi_cktap_ffi_rust_future_poll_rust_buffer,
@@ -884,7 +941,7 @@ public func FfiConverterTypeSatsCard_lift(_ handle: UInt64) throws -> SatsCard {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-public func FfiConverterTypeSatsCard_lower(_ value: SatsCard) -> UInt64 {
+@Sendable public func FfiConverterTypeSatsCard_lower(_ value: SatsCard) -> UInt64 {
     return FfiConverterTypeSatsCard.lower(value)
 }
 
@@ -974,8 +1031,7 @@ open func change(newCvc: String, cvc: String)async throws   {
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_cktap_ffi_fn_method_satschip_change(
-                    self.uniffiCloneHandle(),
-                    FfiConverterString.lower(newCvc),FfiConverterString.lower(cvc)
+                        self.uniffiCloneHandle(),FfiConverterString.lower(newCvc),FfiConverterString.lower(cvc)
                 )
             },
             pollFunc: ffi_cktap_ffi_rust_future_poll_void,
@@ -991,8 +1047,7 @@ open func checkCert()async throws   {
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_cktap_ffi_fn_method_satschip_check_cert(
-                    self.uniffiCloneHandle()
-                    
+                        self.uniffiCloneHandle()
                 )
             },
             pollFunc: ffi_cktap_ffi_rust_future_poll_void,
@@ -1008,8 +1063,7 @@ open func derive(path: [UInt32], cvc: String)async throws  -> String  {
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_cktap_ffi_fn_method_satschip_derive(
-                    self.uniffiCloneHandle(),
-                    FfiConverterSequenceUInt32.lower(path),FfiConverterString.lower(cvc)
+                        self.uniffiCloneHandle(),FfiConverterSequenceUInt32.lower(path),FfiConverterString.lower(cvc)
                 )
             },
             pollFunc: ffi_cktap_ffi_rust_future_poll_rust_buffer,
@@ -1025,15 +1079,14 @@ open func `init`(cvc: String)async throws   {
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_cktap_ffi_fn_method_satschip_init(
-                    self.uniffiCloneHandle(),
-                    FfiConverterString.lower(cvc)
+                        self.uniffiCloneHandle(),FfiConverterString.lower(cvc)
                 )
             },
             pollFunc: ffi_cktap_ffi_rust_future_poll_void,
             completeFunc: ffi_cktap_ffi_rust_future_complete_void,
             freeFunc: ffi_cktap_ffi_rust_future_free_void,
             liftFunc: { $0 },
-            errorHandler: FfiConverterTypeCkTapError_lift
+            errorHandler: FfiConverterTypeInitError_lift
         )
 }
     
@@ -1042,8 +1095,7 @@ open func nfc()async throws  -> String  {
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_cktap_ffi_fn_method_satschip_nfc(
-                    self.uniffiCloneHandle()
-                    
+                        self.uniffiCloneHandle()
                 )
             },
             pollFunc: ffi_cktap_ffi_rust_future_poll_rust_buffer,
@@ -1059,8 +1111,7 @@ open func read()async throws  -> String  {
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_cktap_ffi_fn_method_satschip_read(
-                    self.uniffiCloneHandle()
-                    
+                        self.uniffiCloneHandle()
                 )
             },
             pollFunc: ffi_cktap_ffi_rust_future_poll_rust_buffer,
@@ -1076,8 +1127,7 @@ open func signPsbt(psbt: String, cvc: String)async throws  -> String  {
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_cktap_ffi_fn_method_satschip_sign_psbt(
-                    self.uniffiCloneHandle(),
-                    FfiConverterString.lower(psbt),FfiConverterString.lower(cvc)
+                        self.uniffiCloneHandle(),FfiConverterString.lower(psbt),FfiConverterString.lower(cvc)
                 )
             },
             pollFunc: ffi_cktap_ffi_rust_future_poll_rust_buffer,
@@ -1093,8 +1143,7 @@ open func status()async  -> SatsChipStatus  {
         try!  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_cktap_ffi_fn_method_satschip_status(
-                    self.uniffiCloneHandle()
-                    
+                        self.uniffiCloneHandle()
                 )
             },
             pollFunc: ffi_cktap_ffi_rust_future_poll_rust_buffer,
@@ -1111,8 +1160,7 @@ open func wait()async throws  -> UInt8?  {
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_cktap_ffi_fn_method_satschip_wait(
-                    self.uniffiCloneHandle()
-                    
+                        self.uniffiCloneHandle()
                 )
             },
             pollFunc: ffi_cktap_ffi_rust_future_poll_rust_buffer,
@@ -1128,8 +1176,7 @@ open func xpub(master: Bool, cvc: String)async throws  -> String  {
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_cktap_ffi_fn_method_satschip_xpub(
-                    self.uniffiCloneHandle(),
-                    FfiConverterBool.lower(master),FfiConverterString.lower(cvc)
+                        self.uniffiCloneHandle(),FfiConverterBool.lower(master),FfiConverterString.lower(cvc)
                 )
             },
             pollFunc: ffi_cktap_ffi_rust_future_poll_rust_buffer,
@@ -1181,7 +1228,7 @@ public func FfiConverterTypeSatsChip_lift(_ handle: UInt64) throws -> SatsChip {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-public func FfiConverterTypeSatsChip_lower(_ value: SatsChip) -> UInt64 {
+@Sendable public func FfiConverterTypeSatsChip_lower(_ value: SatsChip) -> UInt64 {
     return FfiConverterTypeSatsChip.lower(value)
 }
 
@@ -1271,8 +1318,7 @@ open func change(newCvc: String, cvc: String)async throws   {
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_cktap_ffi_fn_method_tapsigner_change(
-                    self.uniffiCloneHandle(),
-                    FfiConverterString.lower(newCvc),FfiConverterString.lower(cvc)
+                        self.uniffiCloneHandle(),FfiConverterString.lower(newCvc),FfiConverterString.lower(cvc)
                 )
             },
             pollFunc: ffi_cktap_ffi_rust_future_poll_void,
@@ -1288,8 +1334,7 @@ open func checkCert()async throws   {
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_cktap_ffi_fn_method_tapsigner_check_cert(
-                    self.uniffiCloneHandle()
-                    
+                        self.uniffiCloneHandle()
                 )
             },
             pollFunc: ffi_cktap_ffi_rust_future_poll_void,
@@ -1305,8 +1350,7 @@ open func derive(path: [UInt32], cvc: String)async throws  -> String  {
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_cktap_ffi_fn_method_tapsigner_derive(
-                    self.uniffiCloneHandle(),
-                    FfiConverterSequenceUInt32.lower(path),FfiConverterString.lower(cvc)
+                        self.uniffiCloneHandle(),FfiConverterSequenceUInt32.lower(path),FfiConverterString.lower(cvc)
                 )
             },
             pollFunc: ffi_cktap_ffi_rust_future_poll_rust_buffer,
@@ -1322,15 +1366,14 @@ open func `init`(cvc: String)async throws   {
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_cktap_ffi_fn_method_tapsigner_init(
-                    self.uniffiCloneHandle(),
-                    FfiConverterString.lower(cvc)
+                        self.uniffiCloneHandle(),FfiConverterString.lower(cvc)
                 )
             },
             pollFunc: ffi_cktap_ffi_rust_future_poll_void,
             completeFunc: ffi_cktap_ffi_rust_future_complete_void,
             freeFunc: ffi_cktap_ffi_rust_future_free_void,
             liftFunc: { $0 },
-            errorHandler: FfiConverterTypeCkTapError_lift
+            errorHandler: FfiConverterTypeInitError_lift
         )
 }
     
@@ -1339,8 +1382,7 @@ open func nfc()async throws  -> String  {
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_cktap_ffi_fn_method_tapsigner_nfc(
-                    self.uniffiCloneHandle()
-                    
+                        self.uniffiCloneHandle()
                 )
             },
             pollFunc: ffi_cktap_ffi_rust_future_poll_rust_buffer,
@@ -1356,8 +1398,7 @@ open func read(cvc: String)async throws  -> String  {
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_cktap_ffi_fn_method_tapsigner_read(
-                    self.uniffiCloneHandle(),
-                    FfiConverterString.lower(cvc)
+                        self.uniffiCloneHandle(),FfiConverterString.lower(cvc)
                 )
             },
             pollFunc: ffi_cktap_ffi_rust_future_poll_rust_buffer,
@@ -1373,8 +1414,7 @@ open func signPsbt(psbt: String, cvc: String)async throws  -> String  {
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_cktap_ffi_fn_method_tapsigner_sign_psbt(
-                    self.uniffiCloneHandle(),
-                    FfiConverterString.lower(psbt),FfiConverterString.lower(cvc)
+                        self.uniffiCloneHandle(),FfiConverterString.lower(psbt),FfiConverterString.lower(cvc)
                 )
             },
             pollFunc: ffi_cktap_ffi_rust_future_poll_rust_buffer,
@@ -1390,8 +1430,7 @@ open func status()async  -> TapSignerStatus  {
         try!  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_cktap_ffi_fn_method_tapsigner_status(
-                    self.uniffiCloneHandle()
-                    
+                        self.uniffiCloneHandle()
                 )
             },
             pollFunc: ffi_cktap_ffi_rust_future_poll_rust_buffer,
@@ -1408,8 +1447,7 @@ open func wait()async throws  -> UInt8?  {
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_cktap_ffi_fn_method_tapsigner_wait(
-                    self.uniffiCloneHandle()
-                    
+                        self.uniffiCloneHandle()
                 )
             },
             pollFunc: ffi_cktap_ffi_rust_future_poll_rust_buffer,
@@ -1425,8 +1463,7 @@ open func xpub(master: Bool, cvc: String)async throws  -> String  {
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_cktap_ffi_fn_method_tapsigner_xpub(
-                    self.uniffiCloneHandle(),
-                    FfiConverterBool.lower(master),FfiConverterString.lower(cvc)
+                        self.uniffiCloneHandle(),FfiConverterBool.lower(master),FfiConverterString.lower(cvc)
                 )
             },
             pollFunc: ffi_cktap_ffi_rust_future_poll_rust_buffer,
@@ -1478,7 +1515,7 @@ public func FfiConverterTypeTapSigner_lift(_ handle: UInt64) throws -> TapSigner
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-public func FfiConverterTypeTapSigner_lower(_ value: TapSigner) -> UInt64 {
+@Sendable public func FfiConverterTypeTapSigner_lower(_ value: TapSigner) -> UInt64 {
     return FfiConverterTypeTapSigner.lower(value)
 }
 
@@ -1562,7 +1599,7 @@ public func FfiConverterTypeSatsCardStatus_lift(_ buf: RustBuffer) throws -> Sat
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-public func FfiConverterTypeSatsCardStatus_lower(_ value: SatsCardStatus) -> RustBuffer {
+@Sendable public func FfiConverterTypeSatsCardStatus_lower(_ value: SatsCardStatus) -> RustBuffer {
     return FfiConverterTypeSatsCardStatus.lower(value)
 }
 
@@ -1636,7 +1673,7 @@ public func FfiConverterTypeSatsChipStatus_lift(_ buf: RustBuffer) throws -> Sat
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-public func FfiConverterTypeSatsChipStatus_lower(_ value: SatsChipStatus) -> RustBuffer {
+@Sendable public func FfiConverterTypeSatsChipStatus_lower(_ value: SatsChipStatus) -> RustBuffer {
     return FfiConverterTypeSatsChipStatus.lower(value)
 }
 
@@ -1694,7 +1731,7 @@ public func FfiConverterTypeSlotDetails_lift(_ buf: RustBuffer) throws -> SlotDe
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-public func FfiConverterTypeSlotDetails_lower(_ value: SlotDetails) -> RustBuffer {
+@Sendable public func FfiConverterTypeSlotDetails_lower(_ value: SlotDetails) -> RustBuffer {
     return FfiConverterTypeSlotDetails.lower(value)
 }
 
@@ -1772,7 +1809,7 @@ public func FfiConverterTypeTapSignerStatus_lift(_ buf: RustBuffer) throws -> Ta
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-public func FfiConverterTypeTapSignerStatus_lower(_ value: TapSignerStatus) -> RustBuffer {
+@Sendable public func FfiConverterTypeTapSignerStatus_lower(_ value: TapSignerStatus) -> RustBuffer {
     return FfiConverterTypeTapSignerStatus.lower(value)
 }
 
@@ -1906,7 +1943,7 @@ public func FfiConverterTypeCardError_lift(_ buf: RustBuffer) throws -> CardErro
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-public func FfiConverterTypeCardError_lower(_ value: CardError) -> RustBuffer {
+@Sendable public func FfiConverterTypeCardError_lower(_ value: CardError) -> RustBuffer {
     return FfiConverterTypeCardError.lower(value)
 }
 
@@ -2004,7 +2041,7 @@ public func FfiConverterTypeCertsError_lift(_ buf: RustBuffer) throws -> CertsEr
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-public func FfiConverterTypeCertsError_lower(_ value: CertsError) -> RustBuffer {
+@Sendable public func FfiConverterTypeCertsError_lower(_ value: CertsError) -> RustBuffer {
     return FfiConverterTypeCertsError.lower(value)
 }
 
@@ -2019,11 +2056,11 @@ enum ChangeError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
     
     case CkTap(err: CkTapError
     )
-    case TooShort(len: UInt32
-    )
-    case TooLong(len: UInt32
-    )
     case SameAsOld
+    case CurrentCvc(err: CvcError
+    )
+    case NewCvc(err: CvcError
+    )
 
     
 
@@ -2056,13 +2093,13 @@ public struct FfiConverterTypeChangeError: FfiConverterRustBuffer {
         case 1: return .CkTap(
             err: try FfiConverterTypeCkTapError.read(from: &buf)
             )
-        case 2: return .TooShort(
-            len: try FfiConverterUInt32.read(from: &buf)
+        case 2: return .SameAsOld
+        case 3: return .CurrentCvc(
+            err: try FfiConverterTypeCvcError.read(from: &buf)
             )
-        case 3: return .TooLong(
-            len: try FfiConverterUInt32.read(from: &buf)
+        case 4: return .NewCvc(
+            err: try FfiConverterTypeCvcError.read(from: &buf)
             )
-        case 4: return .SameAsOld
 
          default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -2080,19 +2117,19 @@ public struct FfiConverterTypeChangeError: FfiConverterRustBuffer {
             FfiConverterTypeCkTapError.write(err, into: &buf)
             
         
-        case let .TooShort(len):
-            writeInt(&buf, Int32(2))
-            FfiConverterUInt32.write(len, into: &buf)
-            
-        
-        case let .TooLong(len):
-            writeInt(&buf, Int32(3))
-            FfiConverterUInt32.write(len, into: &buf)
-            
-        
         case .SameAsOld:
-            writeInt(&buf, Int32(4))
+            writeInt(&buf, Int32(2))
         
+        
+        case let .CurrentCvc(err):
+            writeInt(&buf, Int32(3))
+            FfiConverterTypeCvcError.write(err, into: &buf)
+            
+        
+        case let .NewCvc(err):
+            writeInt(&buf, Int32(4))
+            FfiConverterTypeCvcError.write(err, into: &buf)
+            
         }
     }
 }
@@ -2108,7 +2145,7 @@ public func FfiConverterTypeChangeError_lift(_ buf: RustBuffer) throws -> Change
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-public func FfiConverterTypeChangeError_lower(_ value: ChangeError) -> RustBuffer {
+@Sendable public func FfiConverterTypeChangeError_lower(_ value: ChangeError) -> RustBuffer {
     return FfiConverterTypeChangeError.lower(value)
 }
 
@@ -2189,7 +2226,7 @@ public func FfiConverterTypeCkTapCard_lift(_ buf: RustBuffer) throws -> CkTapCar
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-public func FfiConverterTypeCkTapCard_lower(_ value: CkTapCard) -> RustBuffer {
+@Sendable public func FfiConverterTypeCkTapCard_lower(_ value: CkTapCard) -> RustBuffer {
     return FfiConverterTypeCkTapCard.lower(value)
 }
 
@@ -2210,6 +2247,8 @@ enum CkTapError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
     case CborValue(msg: String
     )
     case Transport(msg: String
+    )
+    case UnknownErrorCode(code: UInt16, message: String
     )
     case UnknownCardType
 
@@ -2253,7 +2292,11 @@ public struct FfiConverterTypeCkTapError: FfiConverterRustBuffer {
         case 4: return .Transport(
             msg: try FfiConverterString.read(from: &buf)
             )
-        case 5: return .UnknownCardType
+        case 5: return .UnknownErrorCode(
+            code: try FfiConverterUInt16.read(from: &buf), 
+            message: try FfiConverterString.read(from: &buf)
+            )
+        case 6: return .UnknownCardType
 
          default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -2286,8 +2329,14 @@ public struct FfiConverterTypeCkTapError: FfiConverterRustBuffer {
             FfiConverterString.write(msg, into: &buf)
             
         
-        case .UnknownCardType:
+        case let .UnknownErrorCode(code,message):
             writeInt(&buf, Int32(5))
+            FfiConverterUInt16.write(code, into: &buf)
+            FfiConverterString.write(message, into: &buf)
+            
+        
+        case .UnknownCardType:
+            writeInt(&buf, Int32(6))
         
         }
     }
@@ -2304,8 +2353,106 @@ public func FfiConverterTypeCkTapError_lift(_ buf: RustBuffer) throws -> CkTapEr
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-public func FfiConverterTypeCkTapError_lower(_ value: CkTapError) -> RustBuffer {
+@Sendable public func FfiConverterTypeCkTapError_lower(_ value: CkTapError) -> RustBuffer {
     return FfiConverterTypeCkTapError.lower(value)
+}
+
+
+/**
+ * Errors returned when a CVC does not satisfy its local constraints
+ */
+public 
+enum CvcError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
+
+    
+    
+    case TooShort(length: UInt32
+    )
+    case TooLong(length: UInt32
+    )
+    case NonAsciiDigit(index: UInt32
+    )
+
+    
+
+    
+
+    
+    public var errorDescription: String? {
+        String(reflecting: self)
+    }
+    
+}
+
+#if compiler(>=6)
+extension CvcError: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeCvcError: FfiConverterRustBuffer {
+    typealias SwiftType = CvcError
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> CvcError {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+
+        
+
+        
+        case 1: return .TooShort(
+            length: try FfiConverterUInt32.read(from: &buf)
+            )
+        case 2: return .TooLong(
+            length: try FfiConverterUInt32.read(from: &buf)
+            )
+        case 3: return .NonAsciiDigit(
+            index: try FfiConverterUInt32.read(from: &buf)
+            )
+
+         default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: CvcError, into buf: inout [UInt8]) {
+        switch value {
+
+        
+
+        
+        
+        case let .TooShort(length):
+            writeInt(&buf, Int32(1))
+            FfiConverterUInt32.write(length, into: &buf)
+            
+        
+        case let .TooLong(length):
+            writeInt(&buf, Int32(2))
+            FfiConverterUInt32.write(length, into: &buf)
+            
+        
+        case let .NonAsciiDigit(index):
+            writeInt(&buf, Int32(3))
+            FfiConverterUInt32.write(index, into: &buf)
+            
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCvcError_lift(_ buf: RustBuffer) throws -> CvcError {
+    return try FfiConverterTypeCvcError.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+@Sendable public func FfiConverterTypeCvcError_lower(_ value: CvcError) -> RustBuffer {
+    return FfiConverterTypeCvcError.lower(value)
 }
 
 
@@ -2322,6 +2469,8 @@ enum DeriveError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
     case Key(err: KeyError
     )
     case InvalidChainCode(msg: String
+    )
+    case Cvc(err: CvcError
     )
 
     
@@ -2361,6 +2510,9 @@ public struct FfiConverterTypeDeriveError: FfiConverterRustBuffer {
         case 3: return .InvalidChainCode(
             msg: try FfiConverterString.read(from: &buf)
             )
+        case 4: return .Cvc(
+            err: try FfiConverterTypeCvcError.read(from: &buf)
+            )
 
          default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -2387,6 +2539,11 @@ public struct FfiConverterTypeDeriveError: FfiConverterRustBuffer {
             writeInt(&buf, Int32(3))
             FfiConverterString.write(msg, into: &buf)
             
+        
+        case let .Cvc(err):
+            writeInt(&buf, Int32(4))
+            FfiConverterTypeCvcError.write(err, into: &buf)
+            
         }
     }
 }
@@ -2402,7 +2559,7 @@ public func FfiConverterTypeDeriveError_lift(_ buf: RustBuffer) throws -> Derive
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-public func FfiConverterTypeDeriveError_lower(_ value: DeriveError) -> RustBuffer {
+@Sendable public func FfiConverterTypeDeriveError_lower(_ value: DeriveError) -> RustBuffer {
     return FfiConverterTypeDeriveError.lower(value)
 }
 
@@ -2429,6 +2586,8 @@ enum DumpError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
      * successful `unseal` command.
      */
     case SlotTampered(slot: UInt8
+    )
+    case Cvc(err: CvcError
     )
 
     
@@ -2474,6 +2633,9 @@ public struct FfiConverterTypeDumpError: FfiConverterRustBuffer {
         case 5: return .SlotTampered(
             slot: try FfiConverterUInt8.read(from: &buf)
             )
+        case 6: return .Cvc(
+            err: try FfiConverterTypeCvcError.read(from: &buf)
+            )
 
          default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -2510,6 +2672,11 @@ public struct FfiConverterTypeDumpError: FfiConverterRustBuffer {
             writeInt(&buf, Int32(5))
             FfiConverterUInt8.write(slot, into: &buf)
             
+        
+        case let .Cvc(err):
+            writeInt(&buf, Int32(6))
+            FfiConverterTypeCvcError.write(err, into: &buf)
+            
         }
     }
 }
@@ -2525,8 +2692,96 @@ public func FfiConverterTypeDumpError_lift(_ buf: RustBuffer) throws -> DumpErro
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-public func FfiConverterTypeDumpError_lower(_ value: DumpError) -> RustBuffer {
+@Sendable public func FfiConverterTypeDumpError_lower(_ value: DumpError) -> RustBuffer {
     return FfiConverterTypeDumpError.lower(value)
+}
+
+
+/**
+ * Errors returned by the `init` command
+ */
+public 
+enum InitError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
+
+    
+    
+    case CkTap(err: CkTapError
+    )
+    case Cvc(err: CvcError
+    )
+
+    
+
+    
+
+    
+    public var errorDescription: String? {
+        String(reflecting: self)
+    }
+    
+}
+
+#if compiler(>=6)
+extension InitError: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeInitError: FfiConverterRustBuffer {
+    typealias SwiftType = InitError
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> InitError {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+
+        
+
+        
+        case 1: return .CkTap(
+            err: try FfiConverterTypeCkTapError.read(from: &buf)
+            )
+        case 2: return .Cvc(
+            err: try FfiConverterTypeCvcError.read(from: &buf)
+            )
+
+         default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: InitError, into buf: inout [UInt8]) {
+        switch value {
+
+        
+
+        
+        
+        case let .CkTap(err):
+            writeInt(&buf, Int32(1))
+            FfiConverterTypeCkTapError.write(err, into: &buf)
+            
+        
+        case let .Cvc(err):
+            writeInt(&buf, Int32(2))
+            FfiConverterTypeCvcError.write(err, into: &buf)
+            
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeInitError_lift(_ buf: RustBuffer) throws -> InitError {
+    return try FfiConverterTypeInitError.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+@Sendable public func FfiConverterTypeInitError_lower(_ value: InitError) -> RustBuffer {
+    return FfiConverterTypeInitError.lower(value)
 }
 
 
@@ -2610,7 +2865,7 @@ public func FfiConverterTypeKeyError_lift(_ buf: RustBuffer) throws -> KeyError 
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-public func FfiConverterTypeKeyError_lower(_ value: KeyError) -> RustBuffer {
+@Sendable public func FfiConverterTypeKeyError_lower(_ value: KeyError) -> RustBuffer {
     return FfiConverterTypeKeyError.lower(value)
 }
 
@@ -2626,6 +2881,8 @@ enum ReadError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
     case CkTap(err: CkTapError
     )
     case Key(err: KeyError
+    )
+    case Cvc(err: CvcError
     )
 
     
@@ -2662,6 +2919,9 @@ public struct FfiConverterTypeReadError: FfiConverterRustBuffer {
         case 2: return .Key(
             err: try FfiConverterTypeKeyError.read(from: &buf)
             )
+        case 3: return .Cvc(
+            err: try FfiConverterTypeCvcError.read(from: &buf)
+            )
 
          default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -2683,6 +2943,11 @@ public struct FfiConverterTypeReadError: FfiConverterRustBuffer {
             writeInt(&buf, Int32(2))
             FfiConverterTypeKeyError.write(err, into: &buf)
             
+        
+        case let .Cvc(err):
+            writeInt(&buf, Int32(3))
+            FfiConverterTypeCvcError.write(err, into: &buf)
+            
         }
     }
 }
@@ -2698,7 +2963,7 @@ public func FfiConverterTypeReadError_lift(_ buf: RustBuffer) throws -> ReadErro
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-public func FfiConverterTypeReadError_lower(_ value: ReadError) -> RustBuffer {
+@Sendable public func FfiConverterTypeReadError_lower(_ value: ReadError) -> RustBuffer {
     return FfiConverterTypeReadError.lower(value)
 }
 
@@ -2731,6 +2996,8 @@ enum SignPsbtError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError 
     case PsbtEncoding(msg: String
     )
     case Base64Encoding(msg: String
+    )
+    case Cvc(err: CvcError
     )
 
     
@@ -2796,6 +3063,9 @@ public struct FfiConverterTypeSignPsbtError: FfiConverterRustBuffer {
             )
         case 12: return .Base64Encoding(
             msg: try FfiConverterString.read(from: &buf)
+            )
+        case 13: return .Cvc(
+            err: try FfiConverterTypeCvcError.read(from: &buf)
             )
 
          default: throw UniffiInternalError.unexpectedEnumCase
@@ -2868,6 +3138,11 @@ public struct FfiConverterTypeSignPsbtError: FfiConverterRustBuffer {
             writeInt(&buf, Int32(12))
             FfiConverterString.write(msg, into: &buf)
             
+        
+        case let .Cvc(err):
+            writeInt(&buf, Int32(13))
+            FfiConverterTypeCvcError.write(err, into: &buf)
+            
         }
     }
 }
@@ -2883,7 +3158,7 @@ public func FfiConverterTypeSignPsbtError_lift(_ buf: RustBuffer) throws -> Sign
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-public func FfiConverterTypeSignPsbtError_lower(_ value: SignPsbtError) -> RustBuffer {
+@Sendable public func FfiConverterTypeSignPsbtError_lower(_ value: SignPsbtError) -> RustBuffer {
     return FfiConverterTypeSignPsbtError.lower(value)
 }
 
@@ -2971,7 +3246,7 @@ public func FfiConverterTypeStatusError_lift(_ buf: RustBuffer) throws -> Status
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-public func FfiConverterTypeStatusError_lower(_ value: StatusError) -> RustBuffer {
+@Sendable public func FfiConverterTypeStatusError_lower(_ value: StatusError) -> RustBuffer {
     return FfiConverterTypeStatusError.lower(value)
 }
 
@@ -2987,6 +3262,8 @@ enum UnsealError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
     case CkTap(err: CkTapError
     )
     case Key(err: KeyError
+    )
+    case Cvc(err: CvcError
     )
 
     
@@ -3023,6 +3300,9 @@ public struct FfiConverterTypeUnsealError: FfiConverterRustBuffer {
         case 2: return .Key(
             err: try FfiConverterTypeKeyError.read(from: &buf)
             )
+        case 3: return .Cvc(
+            err: try FfiConverterTypeCvcError.read(from: &buf)
+            )
 
          default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -3044,6 +3324,11 @@ public struct FfiConverterTypeUnsealError: FfiConverterRustBuffer {
             writeInt(&buf, Int32(2))
             FfiConverterTypeKeyError.write(err, into: &buf)
             
+        
+        case let .Cvc(err):
+            writeInt(&buf, Int32(3))
+            FfiConverterTypeCvcError.write(err, into: &buf)
+            
         }
     }
 }
@@ -3059,7 +3344,7 @@ public func FfiConverterTypeUnsealError_lift(_ buf: RustBuffer) throws -> Unseal
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-public func FfiConverterTypeUnsealError_lower(_ value: UnsealError) -> RustBuffer {
+@Sendable public func FfiConverterTypeUnsealError_lower(_ value: UnsealError) -> RustBuffer {
     return FfiConverterTypeUnsealError.lower(value)
 }
 
@@ -3075,6 +3360,8 @@ enum XpubError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
     case CkTap(err: CkTapError
     )
     case Bip32(msg: String
+    )
+    case Cvc(err: CvcError
     )
 
     
@@ -3111,6 +3398,9 @@ public struct FfiConverterTypeXpubError: FfiConverterRustBuffer {
         case 2: return .Bip32(
             msg: try FfiConverterString.read(from: &buf)
             )
+        case 3: return .Cvc(
+            err: try FfiConverterTypeCvcError.read(from: &buf)
+            )
 
          default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -3132,6 +3422,11 @@ public struct FfiConverterTypeXpubError: FfiConverterRustBuffer {
             writeInt(&buf, Int32(2))
             FfiConverterString.write(msg, into: &buf)
             
+        
+        case let .Cvc(err):
+            writeInt(&buf, Int32(3))
+            FfiConverterTypeCvcError.write(err, into: &buf)
+            
         }
     }
 }
@@ -3147,7 +3442,7 @@ public func FfiConverterTypeXpubError_lift(_ buf: RustBuffer) throws -> XpubErro
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-public func FfiConverterTypeXpubError_lower(_ value: XpubError) -> RustBuffer {
+@Sendable public func FfiConverterTypeXpubError_lower(_ value: XpubError) -> RustBuffer {
     return FfiConverterTypeXpubError.lower(value)
 }
 
@@ -3190,7 +3485,9 @@ fileprivate struct UniffiCallbackInterfaceCkTransport {
             uniffiCallbackData: UInt64,
             uniffiOutDroppedCallback: UnsafeMutablePointer<UniffiForeignFutureDroppedCallbackStruct>
         ) in
-            let makeCall = {
+            nonisolated(unsafe) let commandApdu = commandApdu
+
+            let makeCall: @Sendable () async throws -> Data = {
                 () async throws -> Data in
                 guard let uniffiObj = try? FfiConverterCallbackInterfaceCkTransport.handleMap.get(handle: uniffiHandle) else {
                     throw UniffiInternalError.unexpectedStaleHandle
@@ -3200,7 +3497,7 @@ fileprivate struct UniffiCallbackInterfaceCkTransport {
                 )
             }
 
-            let uniffiHandleSuccess = { (returnValue: Data) in
+            let uniffiHandleSuccess: @Sendable (Data) -> () = { (returnValue) in
                 uniffiFutureCallback(
                     uniffiCallbackData,
                     UniffiForeignFutureResultRustBuffer(
@@ -3209,7 +3506,7 @@ fileprivate struct UniffiCallbackInterfaceCkTransport {
                     )
                 )
             }
-            let uniffiHandleError = { (statusCode, errorBuf) in
+            let uniffiHandleError: @Sendable (Int8, RustBuffer) -> () = { (statusCode, errorBuf) in
                 uniffiFutureCallback(
                     uniffiCallbackData,
                     UniffiForeignFutureResultRustBuffer(
@@ -3230,7 +3527,11 @@ fileprivate struct UniffiCallbackInterfaceCkTransport {
 
     // Rust stores this pointer for future callback invocations, so it must live
     // for the process lifetime (not just for the init function call).
-    static let vtablePtr: UnsafePointer<UniffiVTableCallbackInterfaceCkTransport> = {
+    //
+    // `nonisolated(unsafe)` is needed under Swift 6 strict concurrency.
+    // This is safe because the pointee is initialized once during static init
+    // and never mutated by either side of the FFI.  Its fields are C function pointers.
+    nonisolated(unsafe) static let vtablePtr: UnsafePointer<UniffiVTableCallbackInterfaceCkTransport> = {
         let ptr = UnsafeMutablePointer<UniffiVTableCallbackInterfaceCkTransport>.allocate(capacity: 1)
         ptr.initialize(to: vtable)
         return UnsafePointer(ptr)
@@ -3297,7 +3598,7 @@ public func FfiConverterCallbackInterfaceCkTransport_lift(_ handle: UInt64) thro
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-public func FfiConverterCallbackInterfaceCkTransport_lower(_ v: CkTransport) -> UInt64 {
+@Sendable public func FfiConverterCallbackInterfaceCkTransport_lower(_ v: CkTransport) -> UInt64 {
     return FfiConverterCallbackInterfaceCkTransport.lower(v)
 }
 
@@ -3446,9 +3747,9 @@ fileprivate func uniffiFutureContinuationCallback(handle: UInt64, pollResult: In
     }
 }
 private func uniffiTraitInterfaceCallAsync<T>(
-    makeCall: @escaping () async throws -> T,
-    handleSuccess: @escaping (T) -> (),
-    handleError: @escaping (Int8, RustBuffer) -> (),
+    makeCall: @escaping @Sendable () async throws -> T,
+    handleSuccess: @escaping @Sendable (T) -> (),
+    handleError: @escaping @Sendable (Int8, RustBuffer) -> (),
     droppedCallback: UnsafeMutablePointer<UniffiForeignFutureDroppedCallbackStruct>
 ) {
     let task = Task {
@@ -3477,10 +3778,10 @@ private func uniffiTraitInterfaceCallAsync<T>(
 }
 
 private func uniffiTraitInterfaceCallAsyncWithError<T, E>(
-    makeCall: @escaping () async throws -> T,
-    handleSuccess: @escaping (T) -> (),
-    handleError: @escaping (Int8, RustBuffer) -> (),
-    lowerError: @escaping (E) -> RustBuffer,
+    makeCall: @escaping @Sendable () async throws -> T,
+    handleSuccess: @escaping @Sendable (T) -> (),
+    handleError: @escaping @Sendable (Int8, RustBuffer) -> (),
+    lowerError: @escaping @Sendable (E) -> RustBuffer,
     droppedCallback: UnsafeMutablePointer<UniffiForeignFutureDroppedCallbackStruct>
 ) {
     let task = Task {
@@ -3565,100 +3866,100 @@ private let initializationResult: InitializationResult = {
     if bindings_contract_version != scaffolding_contract_version {
         return InitializationResult.contractVersionMismatch
     }
-    if (uniffi_cktap_ffi_checksum_func_to_cktap() != 32899) {
+    if (uniffi_cktap_ffi_checksum_func_to_cktap() != 4207) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_cktap_ffi_checksum_method_satscard_address() != 37827) {
+    if (uniffi_cktap_ffi_checksum_method_satscard_address() != 37022) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_cktap_ffi_checksum_method_satscard_check_cert() != 25375) {
+    if (uniffi_cktap_ffi_checksum_method_satscard_check_cert() != 28398) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_cktap_ffi_checksum_method_satscard_dump() != 20225) {
+    if (uniffi_cktap_ffi_checksum_method_satscard_dump() != 26387) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_cktap_ffi_checksum_method_satscard_new_slot() != 360) {
+    if (uniffi_cktap_ffi_checksum_method_satscard_new_slot() != 38063) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_cktap_ffi_checksum_method_satscard_nfc() != 5150) {
+    if (uniffi_cktap_ffi_checksum_method_satscard_nfc() != 48066) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_cktap_ffi_checksum_method_satscard_read() != 18530) {
+    if (uniffi_cktap_ffi_checksum_method_satscard_read() != 14653) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_cktap_ffi_checksum_method_satscard_sign_psbt() != 16908) {
+    if (uniffi_cktap_ffi_checksum_method_satscard_sign_psbt() != 6382) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_cktap_ffi_checksum_method_satscard_status() != 2484) {
+    if (uniffi_cktap_ffi_checksum_method_satscard_status() != 59572) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_cktap_ffi_checksum_method_satscard_unseal() != 18864) {
+    if (uniffi_cktap_ffi_checksum_method_satscard_unseal() != 60237) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_cktap_ffi_checksum_method_satscard_wait() != 42374) {
+    if (uniffi_cktap_ffi_checksum_method_satscard_wait() != 34368) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_cktap_ffi_checksum_method_satschip_change() != 64965) {
+    if (uniffi_cktap_ffi_checksum_method_satschip_change() != 5196) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_cktap_ffi_checksum_method_satschip_check_cert() != 22418) {
+    if (uniffi_cktap_ffi_checksum_method_satschip_check_cert() != 59615) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_cktap_ffi_checksum_method_satschip_derive() != 35847) {
+    if (uniffi_cktap_ffi_checksum_method_satschip_derive() != 50805) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_cktap_ffi_checksum_method_satschip_init() != 43462) {
+    if (uniffi_cktap_ffi_checksum_method_satschip_init() != 42524) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_cktap_ffi_checksum_method_satschip_nfc() != 32869) {
+    if (uniffi_cktap_ffi_checksum_method_satschip_nfc() != 27858) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_cktap_ffi_checksum_method_satschip_read() != 49709) {
+    if (uniffi_cktap_ffi_checksum_method_satschip_read() != 2044) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_cktap_ffi_checksum_method_satschip_sign_psbt() != 141) {
+    if (uniffi_cktap_ffi_checksum_method_satschip_sign_psbt() != 29016) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_cktap_ffi_checksum_method_satschip_status() != 7960) {
+    if (uniffi_cktap_ffi_checksum_method_satschip_status() != 34606) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_cktap_ffi_checksum_method_satschip_wait() != 6345) {
+    if (uniffi_cktap_ffi_checksum_method_satschip_wait() != 10940) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_cktap_ffi_checksum_method_satschip_xpub() != 63340) {
+    if (uniffi_cktap_ffi_checksum_method_satschip_xpub() != 45436) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_cktap_ffi_checksum_method_tapsigner_change() != 63099) {
+    if (uniffi_cktap_ffi_checksum_method_tapsigner_change() != 55091) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_cktap_ffi_checksum_method_tapsigner_check_cert() != 18657) {
+    if (uniffi_cktap_ffi_checksum_method_tapsigner_check_cert() != 27377) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_cktap_ffi_checksum_method_tapsigner_derive() != 36393) {
+    if (uniffi_cktap_ffi_checksum_method_tapsigner_derive() != 31084) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_cktap_ffi_checksum_method_tapsigner_init() != 19476) {
+    if (uniffi_cktap_ffi_checksum_method_tapsigner_init() != 26344) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_cktap_ffi_checksum_method_tapsigner_nfc() != 36157) {
+    if (uniffi_cktap_ffi_checksum_method_tapsigner_nfc() != 15163) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_cktap_ffi_checksum_method_tapsigner_read() != 700) {
+    if (uniffi_cktap_ffi_checksum_method_tapsigner_read() != 20560) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_cktap_ffi_checksum_method_tapsigner_sign_psbt() != 3541) {
+    if (uniffi_cktap_ffi_checksum_method_tapsigner_sign_psbt() != 16326) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_cktap_ffi_checksum_method_tapsigner_status() != 53193) {
+    if (uniffi_cktap_ffi_checksum_method_tapsigner_status() != 41548) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_cktap_ffi_checksum_method_tapsigner_wait() != 39921) {
+    if (uniffi_cktap_ffi_checksum_method_tapsigner_wait() != 25611) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_cktap_ffi_checksum_method_tapsigner_xpub() != 48830) {
+    if (uniffi_cktap_ffi_checksum_method_tapsigner_xpub() != 4761) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_cktap_ffi_checksum_method_cktransport_transmit_apdu() != 56609) {
+    if (uniffi_cktap_ffi_checksum_method_cktransport_transmit_apdu() != 57685) {
         return InitializationResult.apiChecksumMismatch
     }
 

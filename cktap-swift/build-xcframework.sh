@@ -15,10 +15,10 @@ FFI_LIB_NAME="cktap_ffi"
 FFI_PKG_NAME="cktap-ffi"
 
 DYLIB_FILENAME="lib${FFI_LIB_NAME}.dylib"
-HEADER_BASENAME="${FFI_LIB_NAME}FFI"
+HEADER_BASENAME="CKTapFFI"
 HEADER_FILENAME="${HEADER_BASENAME}.h"
 MODULEMAP_FILENAME="module.modulemap"
-GENERATED_MODULEMAP="${FFI_LIB_NAME}FFI.modulemap"
+GENERATED_MODULEMAP="${HEADER_BASENAME}.modulemap"
 
 NAME="cktapFFI"
 STATIC_LIB_FILENAME="lib${FFI_LIB_NAME}.a"
@@ -110,4 +110,3 @@ xcodebuild -create-xcframework \
     -output "${OUTDIR}/${NAME}.xcframework"
 
 echo "Building Swift package completed."
-

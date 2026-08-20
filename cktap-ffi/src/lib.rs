@@ -8,11 +8,12 @@ mod tap_signer;
 
 uniffi::setup_scaffolding!();
 
-use crate::error::{CertsError, CkTapError, ReadError, StatusError};
+use crate::error::{CertsError, CkTapError, CvcError, ReadError, StatusError};
 use crate::sats_card::SatsCard;
 use crate::sats_chip::SatsChip;
 use crate::tap_signer::TapSigner;
 use futures::lock::Mutex;
+use rust_cktap::Cvc;
 use rust_cktap::shared::{Certificate, Read};
 use std::fmt::Debug;
 use std::sync::Arc;
@@ -34,7 +35,7 @@ impl rust_cktap::CkTransport for CkTransportWrapper {
         self.0
             .transmit_apdu(command_apdu)
             .await
-            .map_err(|e| rust_cktap::CkTapError::Transport(e.to_string()))
+            .map_err(rust_cktap::CkTapError::from)
     }
 }
 
@@ -65,10 +66,16 @@ pub async fn to_cktap(transport: Box<dyn CkTransport>) -> Result<CkTapCard, Stat
 
 // command helpers
 
+fn parse_optional_cvc(cvc: Option<String>) -> Result<Option<Cvc>, CvcError> {
+    cvc.map(Cvc::try_from).transpose().map_err(CvcError::from)
+}
+
 async fn read(
     card: &mut (impl Read + Send + Sync),
     cvc: Option<String>,
 ) -> Result<String, ReadError> {
+    let cvc = parse_optional_cvc(cvc)?;
+
     card.read(cvc)
         .await
         .map(|pk| pk.to_string())

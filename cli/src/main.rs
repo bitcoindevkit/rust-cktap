@@ -6,13 +6,14 @@ use clap::{Parser, Subcommand};
 use rpassword::read_password;
 #[cfg(feature = "emulator")]
 use rust_cktap::emulator;
-use rust_cktap::error::{DumpError, StatusError, UnsealError};
+use rust_cktap::error::{DumpError, StatusError, UnsealError, XpubError};
 #[cfg(not(feature = "emulator"))]
 use rust_cktap::pcsc;
 use rust_cktap::shared::{Authentication, Nfc, Read, Wait};
 use rust_cktap::tap_signer::TapSignerShared;
 use rust_cktap::{
-    CkTapCard, CkTapError, Psbt, PsbtParseError, SignPsbtError, rand_chaincode, shared::Certificate,
+    CkTapCard, CkTapError, Cvc, CvcError, Psbt, PsbtParseError, SignPsbtError, rand_chaincode,
+    shared::Certificate,
 };
 use std::io;
 use std::io::Write;
@@ -35,6 +36,12 @@ pub enum CliError {
     Dump(#[from] DumpError),
     #[error(transparent)]
     CkTap(#[from] CkTapError),
+    #[error(transparent)]
+    Cvc(#[from] CvcError),
+    #[error(transparent)]
+    Xpub(#[from] XpubError),
+    #[error("unable to read CVC: {0}")]
+    CvcInput(String),
 }
 
 /// SatsCard CLI
@@ -187,26 +194,28 @@ async fn main() -> Result<(), CliError> {
                 SatsCardCommand::New => {
                     let slot = sc.slot().expect("current slot number");
                     let chain_code = Some(rand_chaincode());
-                    let response = &sc.new_slot(slot, chain_code, &cvc()).await?;
+                    let cvc = cvc()?;
+                    let response = &sc.new_slot(slot, chain_code, &cvc).await?;
                     println!("chain_code: {chain_code:?}");
                     println!("{response}")
                 }
                 SatsCardCommand::Unseal => {
                     let slot = sc.slot().expect("current slot number");
-                    let (privkey, pubkey) = &sc.unseal(slot, &cvc()).await?;
+                    let cvc = cvc()?;
+                    let (privkey, pubkey) = &sc.unseal(slot, &cvc).await?;
                     println!("privkey: {}, pubkey: {pubkey}", privkey.to_wif())
                 }
                 SatsCardCommand::Sign { slot, psbt } => {
                     let psbt = Psbt::from_str(&psbt)?;
-                    let signed_psbt = sc.sign_psbt(slot, psbt, &cvc()).await?;
+                    let cvc = cvc()?;
+                    let signed_psbt = sc.sign_psbt(slot, psbt, &cvc).await?;
                     println!("signed_psbt: {signed_psbt}");
                 }
                 SatsCardCommand::Derive => {
                     dbg!(&sc.derive().await);
                 }
                 SatsCardCommand::Dump { slot } => {
-                    let cvc = cvc();
-                    let cvc = if cvc.is_empty() { None } else { Some(cvc) };
+                    let cvc = optional_cvc()?;
                     let response = sc.dump(slot, cvc).await?;
                     dbg!(response);
                 }
@@ -221,35 +230,41 @@ async fn main() -> Result<(), CliError> {
                     dbg!(&ts);
                 }
                 TapSignerCommand::Certs => check_cert(ts).await,
-                TapSignerCommand::Read => read(ts, Some(cvc())).await,
+                TapSignerCommand::Read => read(ts, Some(cvc()?)).await,
                 TapSignerCommand::Init => {
                     let chain_code = rand_chaincode();
-                    let response = &ts.init(chain_code, &cvc()).await;
+                    let cvc = cvc()?;
+                    let response = &ts.init(chain_code, &cvc).await;
                     dbg!(response);
                 }
                 TapSignerCommand::Derive { path } => {
                     // let test_path:Vec<u32> = ts.path.clone().unwrap().iter().map(|p| p ^ (1 << 31)).collect();
                     // dbg!(test_path);
-                    dbg!(&ts.derive(path.unwrap_or_default(), &cvc()).await);
+                    let cvc = cvc()?;
+                    dbg!(&ts.derive(path.unwrap_or_default(), &cvc).await);
                 }
 
                 TapSignerCommand::Backup => {
-                    let response = &ts.backup(&cvc()).await;
+                    let cvc = cvc()?;
+                    let response = &ts.backup(&cvc).await;
                     println!("{response:?}");
                 }
 
                 TapSignerCommand::Change { new_cvc } => {
-                    let response = &ts.change(&new_cvc, &cvc()).await;
+                    let new_cvc = Cvc::try_from(new_cvc)?;
+                    let cvc = cvc()?;
+                    let response = &ts.change(&new_cvc, &cvc).await;
                     println!("{response:?}");
                 }
                 TapSignerCommand::Sign { psbt } => {
                     let psbt = Psbt::from_str(&psbt)?;
-                    let signed_psbt = ts.sign_psbt(psbt, &cvc()).await?;
+                    let cvc = cvc()?;
+                    let signed_psbt = ts.sign_psbt(psbt, &cvc).await?;
                     println!("signed_psbt: {signed_psbt}");
                 }
                 TapSignerCommand::Wait => wait(ts).await,
                 TapSignerCommand::Nfc => nfc(ts).await,
-                TapSignerCommand::Xpub { master } => xpub(ts, master).await,
+                TapSignerCommand::Xpub { master } => xpub(ts, master).await?,
             }
         }
         CkTapCard::SatsChip(sc) => {
@@ -259,28 +274,33 @@ async fn main() -> Result<(), CliError> {
                     dbg!(&sc);
                 }
                 SatsChipCommand::Certs => check_cert(sc).await,
-                SatsChipCommand::Read => read(sc, Some(cvc())).await,
+                SatsChipCommand::Read => read(sc, Some(cvc()?)).await,
                 SatsChipCommand::Init => {
                     let chain_code = rand_chaincode();
-                    let response = &sc.init(chain_code, &cvc()).await;
+                    let cvc = cvc()?;
+                    let response = &sc.init(chain_code, &cvc).await;
                     dbg!(response);
                 }
                 SatsChipCommand::Derive { path } => {
-                    dbg!(&sc.derive(path.unwrap_or_default(), &cvc()).await);
+                    let cvc = cvc()?;
+                    dbg!(&sc.derive(path.unwrap_or_default(), &cvc).await);
                 }
 
                 SatsChipCommand::Change { new_cvc } => {
-                    let response = &sc.change(&new_cvc, &cvc()).await;
+                    let new_cvc = Cvc::try_from(new_cvc)?;
+                    let cvc = cvc()?;
+                    let response = &sc.change(&new_cvc, &cvc).await;
                     println!("{response:?}");
                 }
                 SatsChipCommand::Sign { psbt } => {
                     let psbt = Psbt::from_str(&psbt)?;
-                    let signed_psbt = sc.sign_psbt(psbt, &cvc()).await?;
+                    let cvc = cvc()?;
+                    let signed_psbt = sc.sign_psbt(psbt, &cvc).await?;
                     println!("signed_psbt: {signed_psbt}");
                 }
                 SatsChipCommand::Wait => wait(sc).await,
                 SatsChipCommand::Nfc => nfc(sc).await,
-                SatsChipCommand::Xpub { master } => xpub(sc, master).await,
+                SatsChipCommand::Xpub { master } => xpub(sc, master).await?,
             }
         }
     }
@@ -304,7 +324,7 @@ where
     }
 }
 
-async fn read<C>(card: &mut C, cvc: Option<String>)
+async fn read<C>(card: &mut C, cvc: Option<Cvc>)
 where
     C: Read + Send,
 {
@@ -317,11 +337,28 @@ where
     }
 }
 
-fn cvc() -> String {
+fn cvc() -> Result<Cvc, CliError> {
     print!("Enter cvc: ");
     io::stdout().flush().unwrap();
-    let cvc = read_password().unwrap();
-    cvc.trim().to_string()
+    let cvc = read_password().map_err(|error| CliError::CvcInput(error.to_string()))?;
+    Ok(Cvc::try_from(cvc.trim())?)
+}
+
+fn optional_cvc() -> Result<Option<Cvc>, CliError> {
+    print!("Enter cvc (leave empty for none): ");
+    io::stdout().flush().unwrap();
+    let cvc = read_password().map_err(|error| CliError::CvcInput(error.to_string()))?;
+    Ok(parse_optional_cvc_input(cvc)?)
+}
+
+fn parse_optional_cvc_input(cvc: String) -> Result<Option<Cvc>, CvcError> {
+    let cvc = cvc.trim();
+
+    if cvc.is_empty() {
+        Ok(None)
+    } else {
+        Ok(Some(Cvc::try_from(cvc)?))
+    }
 }
 
 async fn wait<C>(card: &mut C)
@@ -348,12 +385,25 @@ where
     println!("{nfc}");
 }
 
-async fn xpub<C>(card: &mut C, master: bool)
+async fn xpub<C>(card: &mut C, master: bool) -> Result<(), CliError>
 where
     C: TapSignerShared + Send,
 {
     dbg!(master);
-    let xpub = card.xpub(master, &cvc()).await.expect("xpub failed");
+    let cvc = cvc()?;
+    let xpub = card.xpub(master, &cvc).await?;
     dbg!(&xpub);
     println!("{xpub}");
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn optional_prompt_treats_whitespace_as_no_cvc() {
+        let cvc = parse_optional_cvc_input(" \t\n".to_string()).expect("empty CVC is valid");
+        assert_eq!(cvc, None);
+    }
 }

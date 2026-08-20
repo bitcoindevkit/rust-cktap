@@ -11,6 +11,7 @@ pub use bitcoin::secp256k1::{Error as SecpError, rand};
 pub use bitcoin_hashes::sha256::Hash;
 pub use miniscript::descriptor;
 
+pub use cvc::{Cvc, CvcError, MAX_CVC_LENGTH, MIN_CVC_LENGTH};
 pub use error::{
     CardError, CertsError, ChangeError, CkTapError, DeriveError, DumpError, ReadError,
     SignPsbtError, StatusError, UnsealError, XpubError,
@@ -20,6 +21,7 @@ pub use shared::{CkTransport, card_pubkey_to_ident};
 use bitcoin::key::rand::Rng as _;
 
 pub(crate) mod apdu;
+pub mod cvc;
 pub mod error;
 pub mod sats_card;
 pub mod sats_chip;

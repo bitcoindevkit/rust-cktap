@@ -15,8 +15,22 @@ pub enum CkTapError {
     CborValue(String),
     #[error("APDU transport error: {0}")]
     Transport(String),
+    #[error("Unknown card error code ({code}): {message}")]
+    UnknownErrorCode { code: u16, message: String },
     #[error("Unknown card type")]
     UnknownCardType,
+}
+
+impl CkTapError {
+    pub(crate) fn from_error_response(code: u16, message: impl Into<String>) -> Self {
+        match CardError::error_from_code(code) {
+            Some(error) => Self::Card(error),
+            None => Self::UnknownErrorCode {
+                code,
+                message: message.into(),
+            },
+        }
+    }
 }
 
 /// Errors returned by the CkTap card.
@@ -130,10 +144,6 @@ impl From<pcsc::Error> for StatusError {
 pub enum ChangeError {
     #[error(transparent)]
     CkTap(#[from] CkTapError),
-    #[error("new cvc is too short, must be at least 6 bytes, was only {0} bytes")]
-    TooShort(u32),
-    #[error("new cvc is too long, must be at most 32 bytes, was {0} bytes")]
-    TooLong(u32),
     #[error("new cvc is the same as the old one")]
     SameAsOld,
 }

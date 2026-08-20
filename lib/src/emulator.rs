@@ -4,7 +4,7 @@
 use crate::apdu::{AppletSelect, CommandApdu, StatusCommand};
 use crate::error::StatusError;
 use crate::shared::{CkTransport, to_cktap};
-use crate::{CkTapCard, CkTapError};
+use crate::{CkTapCard, CkTapError, Cvc};
 use async_trait::async_trait;
 use std::io::{Read, Write};
 use std::os::unix::net::UnixStream;
@@ -12,7 +12,10 @@ use std::path::Path;
 use std::string::ToString;
 use std::sync::Arc;
 
-pub const CVC: &str = "123456";
+/// Return the default emulator CVC
+pub fn emulator_default_cvc() -> Cvc {
+    Cvc::try_from("123456").expect("the emulator CVC is valid")
+}
 
 pub async fn find_emulator(pipe_path: &Path) -> Result<CkTapCard, StatusError> {
     if !pipe_path.exists() {
