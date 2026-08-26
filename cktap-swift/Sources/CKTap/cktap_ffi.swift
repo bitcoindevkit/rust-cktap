@@ -1780,8 +1780,7 @@ public func FfiConverterTypeTapSignerStatus_lower(_ value: TapSignerStatus) -> R
 /**
  * Errors returned by the CkTap card.
  */
-public 
-enum CardError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
+public enum CardError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
 
     
     
@@ -1914,8 +1913,7 @@ public func FfiConverterTypeCardError_lower(_ value: CardError) -> RustBuffer {
 /**
  * Errors returned by the `certs` command.
  */
-public 
-enum CertsError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
+public enum CertsError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
 
     
     
@@ -2012,8 +2010,7 @@ public func FfiConverterTypeCertsError_lower(_ value: CertsError) -> RustBuffer 
 /**
  * Errors returned by the `change` command.
  */
-public 
-enum ChangeError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
+public enum ChangeError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
 
     
     
@@ -2112,7 +2109,8 @@ public func FfiConverterTypeChangeError_lower(_ value: ChangeError) -> RustBuffe
     return FfiConverterTypeChangeError.lower(value)
 }
 
-
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
 
 public enum CkTapCard {
     
@@ -2198,8 +2196,7 @@ public func FfiConverterTypeCkTapCard_lower(_ value: CkTapCard) -> RustBuffer {
 /**
  * Errors returned by the card, CBOR deserialization or value encoding, or the APDU transport.
  */
-public 
-enum CkTapError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
+public enum CkTapError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
 
     
     
@@ -2312,8 +2309,7 @@ public func FfiConverterTypeCkTapError_lower(_ value: CkTapError) -> RustBuffer 
 /**
  * Errors returned by the `derive` command.
  */
-public 
-enum DeriveError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
+public enum DeriveError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
 
     
     
@@ -2410,8 +2406,7 @@ public func FfiConverterTypeDeriveError_lower(_ value: DeriveError) -> RustBuffe
 /**
  * Errors returned by the `dump` command.
  */
-public 
-enum DumpError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
+public enum DumpError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
 
     
     
@@ -2530,8 +2525,7 @@ public func FfiConverterTypeDumpError_lower(_ value: DumpError) -> RustBuffer {
 }
 
 
-public 
-enum KeyError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
+public enum KeyError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
 
     
     
@@ -2618,8 +2612,7 @@ public func FfiConverterTypeKeyError_lower(_ value: KeyError) -> RustBuffer {
 /**
  * Errors returned by the `read` command.
  */
-public 
-enum ReadError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
+public enum ReadError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
 
     
     
@@ -2703,8 +2696,7 @@ public func FfiConverterTypeReadError_lower(_ value: ReadError) -> RustBuffer {
 }
 
 
-public 
-enum SignPsbtError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
+public enum SignPsbtError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
 
     
     
@@ -2891,8 +2883,7 @@ public func FfiConverterTypeSignPsbtError_lower(_ value: SignPsbtError) -> RustB
 /**
  * Errors returned by the `status` command.
  */
-public 
-enum StatusError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
+public enum StatusError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
 
     
     
@@ -2979,8 +2970,7 @@ public func FfiConverterTypeStatusError_lower(_ value: StatusError) -> RustBuffe
 /**
  * Errors returned by the `unseal` command.
  */
-public 
-enum UnsealError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
+public enum UnsealError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
 
     
     
@@ -3067,8 +3057,7 @@ public func FfiConverterTypeUnsealError_lower(_ value: UnsealError) -> RustBuffe
 /**
  * Errors returned by the `xpub` command.
  */
-public 
-enum XpubError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
+public enum XpubError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
 
     
     
@@ -3167,8 +3156,9 @@ fileprivate struct UniffiCallbackInterfaceCkTransport {
     // Create the VTable using a series of closures.
     // Swift automatically converts these into C callback functions.
     //
-    // Store the vtable directly.
-    static let vtable: UniffiVTableCallbackInterfaceCkTransport = UniffiVTableCallbackInterfaceCkTransport(
+    // This creates 1-element array, since this seems to be the only way to construct a const
+    // pointer that we can pass to the Rust code.
+    static let vtable: [UniffiVTableCallbackInterfaceCkTransport] = [UniffiVTableCallbackInterfaceCkTransport(
         uniffiFree: { (uniffiHandle: UInt64) -> () in
             do {
                 try FfiConverterCallbackInterfaceCkTransport.handleMap.remove(handle: uniffiHandle)
@@ -3226,19 +3216,11 @@ fileprivate struct UniffiCallbackInterfaceCkTransport {
                 droppedCallback: uniffiOutDroppedCallback
             )
         }
-    )
-
-    // Rust stores this pointer for future callback invocations, so it must live
-    // for the process lifetime (not just for the init function call).
-    static let vtablePtr: UnsafePointer<UniffiVTableCallbackInterfaceCkTransport> = {
-        let ptr = UnsafeMutablePointer<UniffiVTableCallbackInterfaceCkTransport>.allocate(capacity: 1)
-        ptr.initialize(to: vtable)
-        return UnsafePointer(ptr)
-    }()
+    )]
 }
 
 private func uniffiCallbackInitCkTransport() {
-    uniffi_cktap_ffi_fn_init_callback_vtable_cktransport(UniffiCallbackInterfaceCkTransport.vtablePtr)
+    uniffi_cktap_ffi_fn_init_callback_vtable_cktransport(UniffiCallbackInterfaceCkTransport.vtable)
 }
 
 // FfiConverter protocol for callback interfaces
