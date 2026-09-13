@@ -11,7 +11,7 @@ use crate::error::{ChangeError, DeriveError, ReadError, SignPsbtError, StatusErr
 use crate::shared::{
     Authentication, Certificate, CkTransport, Nfc, Read, Wait, card_pubkey_to_ident, transmit,
 };
-use crate::{BIP32_HARDENED_MASK, CkTapError};
+use crate::{BIP32_HARDENED_MASK, CkTapError, Cvc};
 use async_trait::async_trait;
 use bitcoin::PublicKey;
 use bitcoin::bip32::{ChainCode, Xpub};
@@ -79,7 +79,7 @@ impl Authentication for TapSigner {
 #[async_trait]
 pub trait TapSignerShared: Authentication {
     /// Initialize the tap signer or sats chip, can only be done once
-    async fn init(&mut self, chain_code: ChainCode, cvc: &str) -> Result<(), CkTapError> {
+    async fn init(&mut self, chain_code: ChainCode, cvc: &Cvc) -> Result<(), CkTapError> {
         let (_, epubkey, xcvc) = self.calc_ekeys_xcvc(cvc, NewCommand::name());
         let new_command = NewCommand::new(Some(0), Some(chain_code), epubkey, xcvc);
         let new_response: NewResponse = transmit(self.transport(), &new_command).await?;
@@ -100,7 +100,7 @@ pub trait TapSignerShared: Authentication {
         &mut self,
         digest: [u8; 32],
         sub_path: Vec<u32>,
-        cvc: &str,
+        cvc: &Cvc,
     ) -> Result<SignResponse, CkTapError> {
         let (eprivkey, epubkey, xcvc) = self.calc_ekeys_xcvc(cvc, SignCommand::name());
 
@@ -147,7 +147,7 @@ pub trait TapSignerShared: Authentication {
     async fn sign_psbt(
         &mut self,
         mut psbt: bitcoin::Psbt,
-        cvc: &str,
+        cvc: &Cvc,
     ) -> Result<bitcoin::Psbt, SignPsbtError> {
         use bitcoin::{
             secp256k1::ecdsa,
@@ -246,7 +246,7 @@ pub trait TapSignerShared: Authentication {
     /// mobile wallet.
     ///
     /// Ref: <https://github.com/coinkite/coinkite-tap-proto/blob/master/docs/protocol.md#tapsigner-performs-subkey-derivation>
-    async fn derive(&mut self, path: Vec<u32>, cvc: &str) -> Result<PublicKey, DeriveError> {
+    async fn derive(&mut self, path: Vec<u32>, cvc: &Cvc) -> Result<PublicKey, DeriveError> {
         // set most significant bit to 1 to represent hardened path steps
         let path = path.iter().map(|p| p ^ (1 << 31)).collect::<Vec<_>>();
         let app_nonce = crate::rand_nonce();
@@ -284,15 +284,7 @@ pub trait TapSignerShared: Authentication {
     }
 
     /// Change the CVC used for card authentication to a new user provided one
-    async fn change(&mut self, new_cvc: &str, cvc: &str) -> Result<(), ChangeError> {
-        if new_cvc.len() < 6 {
-            return Err(ChangeError::TooShort(new_cvc.len() as u32));
-        }
-
-        if new_cvc.len() > 32 {
-            return Err(ChangeError::TooLong(new_cvc.len() as u32));
-        }
-
+    async fn change(&mut self, new_cvc: &Cvc, cvc: &Cvc) -> Result<(), ChangeError> {
         if new_cvc == cvc {
             return Err(ChangeError::SameAsOld);
         }
@@ -318,7 +310,7 @@ pub trait TapSignerShared: Authentication {
         Ok(())
     }
 
-    async fn xpub(&mut self, master: bool, cvc: &str) -> Result<Xpub, XpubError> {
+    async fn xpub(&mut self, master: bool, cvc: &Cvc) -> Result<Xpub, XpubError> {
         let (_, epubkey, xcvc) = self.calc_ekeys_xcvc(cvc, XpubCommand::name());
         let xpub_command = XpubCommand::new(master, epubkey, xcvc);
         let xpub_response: XpubResponse = transmit(self.transport(), &xpub_command).await?;
@@ -360,7 +352,7 @@ impl TapSigner {
     }
 
     /// Backup the current card, the backup is encrypted with the "Backup Password" on the back of the card
-    pub async fn backup(&mut self, cvc: &str) -> Result<Vec<u8>, ChangeError> {
+    pub async fn backup(&mut self, cvc: &Cvc) -> Result<Vec<u8>, ChangeError> {
         let (_, epubkey, xcvc) = self.calc_ekeys_xcvc(cvc, "backup");
 
         let backup_command = BackupCommand::new(epubkey, xcvc);
@@ -414,7 +406,7 @@ mod test {
     use crate::emulator::find_emulator;
     use crate::emulator::test::{CardTypeOption, EcardSubprocess};
     use crate::tap_signer::TapSignerShared;
-    use crate::{CkTapCard, rand_chaincode};
+    use crate::{CkTapCard, Cvc, rand_chaincode};
     use std::path::Path;
 
     // verify the xpub command works
@@ -426,10 +418,11 @@ mod test {
         let python = EcardSubprocess::new(pipe_path, &card_type).unwrap();
         let emulator = find_emulator(pipe_path).await.unwrap();
         if let CkTapCard::TapSigner(mut ts) = emulator {
-            ts.init(rand_chaincode(), "123456").await.unwrap();
-            let xpub = ts.xpub(false, "123456").await.unwrap();
+            let cvc = Cvc::try_from("123456").unwrap();
+            ts.init(rand_chaincode(), &cvc).await.unwrap();
+            let xpub = ts.xpub(false, &cvc).await.unwrap();
             assert_eq!(xpub.depth, 3);
-            let master_xpub = ts.xpub(true, "123456").await.unwrap();
+            let master_xpub = ts.xpub(true, &cvc).await.unwrap();
             assert_eq!(master_xpub.depth, 0);
         }
         drop(python);

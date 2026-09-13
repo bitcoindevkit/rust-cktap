@@ -27,6 +27,36 @@ impl From<rust_cktap::FromSliceError> for KeyError {
     }
 }
 
+/// Errors returned when a CVC does not satisfy its local constraints
+#[derive(Debug, Copy, Clone, PartialEq, Eq, thiserror::Error, uniffi::Error)]
+pub enum CvcError {
+    /// The CVC contains fewer than six bytes
+    #[error("CVC is too short: {length} bytes; minimum is 6")]
+    TooShort { length: u32 },
+    /// The CVC contains more than 32 bytes
+    #[error("CVC is too long: {length} bytes; maximum is 32")]
+    TooLong { length: u32 },
+    /// The CVC contains a byte that is not an ASCII digit
+    #[error("CVC contains a byte that is not an ASCII digit at byte index {index}")]
+    NonAsciiDigit { index: u32 },
+}
+
+impl From<rust_cktap::CvcError> for CvcError {
+    fn from(value: rust_cktap::CvcError) -> Self {
+        match value {
+            rust_cktap::CvcError::TooShort { length } => Self::TooShort {
+                length: u32::try_from(length).unwrap_or(u32::MAX),
+            },
+            rust_cktap::CvcError::TooLong { length } => Self::TooLong {
+                length: u32::try_from(length).unwrap_or(u32::MAX),
+            },
+            rust_cktap::CvcError::NonAsciiDigit { index } => Self::NonAsciiDigit {
+                index: u32::try_from(index).unwrap_or(u32::MAX),
+            },
+        }
+    }
+}
+
 /// Errors returned by the CkTap card.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, thiserror::Error, uniffi::Error)]
 pub enum CardError {
@@ -72,6 +102,24 @@ impl From<rust_cktap::CardError> for CardError {
     }
 }
 
+impl From<CardError> for rust_cktap::CardError {
+    fn from(value: CardError) -> Self {
+        match value {
+            CardError::UnluckyNumber => Self::UnluckyNumber,
+            CardError::BadArguments => Self::BadArguments,
+            CardError::BadAuth => Self::BadAuth,
+            CardError::NeedsAuth => Self::NeedsAuth,
+            CardError::UnknownCommand => Self::UnknownCommand,
+            CardError::InvalidCommand => Self::InvalidCommand,
+            CardError::InvalidState => Self::InvalidState,
+            CardError::WeakNonce => Self::WeakNonce,
+            CardError::BadCBOR => Self::BadCBOR,
+            CardError::BackupFirst => Self::BackupFirst,
+            CardError::RateLimited => Self::RateLimited,
+        }
+    }
+}
+
 /// Errors returned by the card, CBOR deserialization or value encoding, or the APDU transport.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error, uniffi::Error)]
 pub enum CkTapError {
@@ -83,6 +131,8 @@ pub enum CkTapError {
     CborValue { msg: String },
     #[error("APDU transport error: {msg}")]
     Transport { msg: String },
+    #[error("Unknown card error code ({code}): {message}")]
+    UnknownErrorCode { code: u16, message: String },
     #[error("Unknown card type")]
     UnknownCardType,
 }
@@ -94,7 +144,25 @@ impl From<rust_cktap::CkTapError> for CkTapError {
             rust_cktap::CkTapError::CborDe(msg) => CkTapError::CborDe { msg },
             rust_cktap::CkTapError::CborValue(msg) => CkTapError::CborValue { msg },
             rust_cktap::CkTapError::Transport(msg) => CkTapError::Transport { msg },
+            rust_cktap::CkTapError::UnknownErrorCode { code, message } => {
+                CkTapError::UnknownErrorCode { code, message }
+            }
             rust_cktap::CkTapError::UnknownCardType => CkTapError::UnknownCardType,
+        }
+    }
+}
+
+impl From<CkTapError> for rust_cktap::CkTapError {
+    fn from(value: CkTapError) -> Self {
+        match value {
+            CkTapError::Card { err } => Self::Card(err.into()),
+            CkTapError::CborDe { msg } => Self::CborDe(msg),
+            CkTapError::CborValue { msg } => Self::CborValue(msg),
+            CkTapError::Transport { msg } => Self::Transport(msg),
+            CkTapError::UnknownErrorCode { code, message } => {
+                Self::UnknownErrorCode { code, message }
+            }
+            CkTapError::UnknownCardType => Self::UnknownCardType,
         }
     }
 }
@@ -111,6 +179,23 @@ pub enum StatusError {
     Key {
         #[from]
         err: KeyError,
+    },
+}
+
+/// Errors returned by the `init` command
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error, uniffi::Error)]
+pub enum InitError {
+    /// The card or transport rejected the command
+    #[error(transparent)]
+    CkTap {
+        #[from]
+        err: CkTapError,
+    },
+    /// The CVC failed local validation
+    #[error(transparent)]
+    Cvc {
+        #[from]
+        err: CvcError,
     },
 }
 
@@ -135,6 +220,12 @@ pub enum ReadError {
     Key {
         #[from]
         err: KeyError,
+    },
+    /// The CVC failed local validation
+    #[error(transparent)]
+    Cvc {
+        #[from]
+        err: CvcError,
     },
 }
 
@@ -191,6 +282,12 @@ pub enum DeriveError {
     },
     #[error("Invalid chain code: {msg}")]
     InvalidChainCode { msg: String },
+    /// The CVC failed local validation
+    #[error(transparent)]
+    Cvc {
+        #[from]
+        err: CvcError,
+    },
 }
 
 impl From<rust_cktap::DeriveError> for DeriveError {
@@ -216,6 +313,12 @@ pub enum UnsealError {
     Key {
         #[from]
         err: KeyError,
+    },
+    /// The CVC failed local validation
+    #[error(transparent)]
+    Cvc {
+        #[from]
+        err: CvcError,
     },
 }
 
@@ -251,6 +354,12 @@ pub enum DumpError {
     /// successful `unseal` command.
     #[error("Slot was unsealed improperly: {slot}")]
     SlotTampered { slot: u8 },
+    /// The CVC failed local validation
+    #[error(transparent)]
+    Cvc {
+        #[from]
+        err: CvcError,
+    },
 }
 
 impl From<rust_cktap::DumpError> for DumpError {
@@ -295,6 +404,12 @@ pub enum SignPsbtError {
     PsbtEncoding { msg: String },
     #[error("Error in PSBT Base64 encoding: {msg}")]
     Base64Encoding { msg: String },
+    /// The CVC failed local validation
+    #[error(transparent)]
+    Cvc {
+        #[from]
+        err: CvcError,
+    },
 }
 
 impl From<rust_cktap::SignPsbtError> for SignPsbtError {
@@ -344,20 +459,32 @@ pub enum ChangeError {
         #[from]
         err: CkTapError,
     },
-    #[error("new cvc is too short, must be at least 6 bytes, was only {len} bytes")]
-    TooShort { len: u32 },
-    #[error("new cvc is too long, must be at most 32 bytes, was {len} bytes")]
-    TooLong { len: u32 },
     #[error("new cvc is the same as the old one")]
     SameAsOld,
+    /// The current CVC failed local validation
+    #[error("invalid current CVC: {err}")]
+    CurrentCvc { err: CvcError },
+    /// The new CVC failed local validation
+    #[error("invalid new CVC: {err}")]
+    NewCvc { err: CvcError },
+}
+
+impl ChangeError {
+    /// Wrap a CVC validation failure for the current CVC
+    pub(crate) fn current_cvc(err: impl Into<CvcError>) -> Self {
+        Self::CurrentCvc { err: err.into() }
+    }
+
+    /// Wrap a CVC validation failure for the new CVC
+    pub(crate) fn new_cvc(err: impl Into<CvcError>) -> Self {
+        Self::NewCvc { err: err.into() }
+    }
 }
 
 impl From<rust_cktap::ChangeError> for ChangeError {
     fn from(value: rust_cktap::ChangeError) -> Self {
         match value {
             rust_cktap::ChangeError::CkTap(err) => ChangeError::CkTap { err: err.into() },
-            rust_cktap::ChangeError::TooShort(len) => ChangeError::TooShort { len },
-            rust_cktap::ChangeError::TooLong(len) => ChangeError::TooLong { len },
             rust_cktap::ChangeError::SameAsOld => ChangeError::SameAsOld,
         }
     }
@@ -373,6 +500,12 @@ pub enum XpubError {
     },
     #[error("BIP32 error: {msg}")]
     Bip32 { msg: String },
+    /// The CVC failed local validation
+    #[error(transparent)]
+    Cvc {
+        #[from]
+        err: CvcError,
+    },
 }
 
 impl From<rust_cktap::XpubError> for XpubError {

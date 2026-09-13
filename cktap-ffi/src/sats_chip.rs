@@ -2,11 +2,13 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
 use crate::error::{
-    CertsError, ChangeError, CkTapError, DeriveError, ReadError, SignPsbtError, XpubError,
+    CertsError, ChangeError, CkTapError, CvcError, DeriveError, InitError, ReadError,
+    SignPsbtError, XpubError,
 };
 use crate::tap_signer::{change, derive, init, sign_psbt};
 use crate::{check_cert, read};
 use futures::lock::Mutex;
+use rust_cktap::Cvc;
 use rust_cktap::shared::{Authentication, Nfc, Wait};
 use rust_cktap::tap_signer::TapSignerShared;
 
@@ -54,24 +56,30 @@ impl SatsChip {
         check_cert(&mut *card).await
     }
 
-    pub async fn init(&self, cvc: String) -> Result<(), CkTapError> {
+    pub async fn init(&self, cvc: String) -> Result<(), InitError> {
+        let cvc = Cvc::try_from(cvc).map_err(CvcError::from)?;
         let mut card = self.0.lock().await;
-        init(&mut *card, cvc).await
+        init(&mut *card, cvc).await?;
+        Ok(())
     }
 
     pub async fn sign_psbt(&self, psbt: String, cvc: String) -> Result<String, SignPsbtError> {
+        let cvc = Cvc::try_from(cvc).map_err(CvcError::from)?;
         let mut card = self.0.lock().await;
         let psbt = sign_psbt(&mut *card, psbt, cvc).await?;
         Ok(psbt)
     }
 
     pub async fn derive(&self, path: Vec<u32>, cvc: String) -> Result<String, DeriveError> {
+        let cvc = Cvc::try_from(cvc).map_err(CvcError::from)?;
         let mut card = self.0.lock().await;
         let pubkey = derive(&mut *card, path, cvc).await?;
         Ok(pubkey)
     }
 
     pub async fn change(&self, new_cvc: String, cvc: String) -> Result<(), ChangeError> {
+        let new_cvc = Cvc::try_from(new_cvc).map_err(ChangeError::new_cvc)?;
+        let cvc = Cvc::try_from(cvc).map_err(ChangeError::current_cvc)?;
         let mut card = self.0.lock().await;
         change(&mut *card, new_cvc, cvc).await?;
         Ok(())
@@ -84,6 +92,7 @@ impl SatsChip {
     }
 
     pub async fn xpub(&self, master: bool, cvc: String) -> Result<String, XpubError> {
+        let cvc = Cvc::try_from(cvc).map_err(CvcError::from)?;
         let mut card = self.0.lock().await;
         let xpub = card.xpub(master, &cvc).await?;
         Ok(xpub.to_string())
