@@ -27,15 +27,13 @@ jobs:
           - --all-features
     steps:
       - name: checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v7
       - name: Install Rust toolchain
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: ${{ matrix.rust.version }}
-          override: true
-          profile: minimal
       - name: Rust Cache
-        uses: Swatinem/rust-cache@v2.2.1
+        uses: Swatinem/rust-cache@v2
       - name: Install PCSC development libraries
         run: |
           sudo apt-get update
@@ -57,17 +55,15 @@ jobs:
             msrv: true
     steps:
       - name: checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v7
         with:
           submodules: 'true'
       - name: Install Rust toolchain
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: ${{ matrix.rust.version }}
-          override: true
-          profile: minimal
       - name: Rust Cache
-        uses: Swatinem/rust-cache@v2.2.1
+        uses: Swatinem/rust-cache@v2
       - name: Use MSRV Cargo.toml # Don't include "cli" in workspace if using MSRV
         if: ${{ matrix.rust.msrv }}
         run: cp Cargo.toml.MSRV Cargo.toml
@@ -76,7 +72,7 @@ jobs:
           sudo apt-get update -y
           sudo apt-get install -y swig libpcsclite-dev
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v7
         with:
           python-version: '3.12'
       - name: Test
@@ -93,13 +89,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v7
       - name: Install Rust toolchain
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@nightly
         with:
-          toolchain: nightly
-          override: true
-          profile: minimal
           components: rustfmt
       - name: Check fmt
         run: cargo +nightly fmt --all
@@ -108,18 +101,15 @@ jobs:
     name: Clippy check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v1
-      - uses: actions-rs/toolchain@v1
+      - uses: actions/checkout@v7
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: stable
           components: clippy
-          override: true
       - name: Rust Cache
-        uses: Swatinem/rust-cache@v2.2.1
+        uses: Swatinem/rust-cache@v2
       - name: Install libpcsclite-dev
         run: sudo apt install libpcsclite-dev
-      - uses: actions-rs/clippy-check@v1
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          args: --all-features --all-targets -- -D warnings
+      - name: Run clippy
+        run: cargo clippy --all-features --all-targets -- -D warnings
 

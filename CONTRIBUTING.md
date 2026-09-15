@@ -114,30 +114,28 @@ Releases of the `rust-cktap` crate are automated with [release-plz](https://rele
 `rust-cktap` library crate is released this way; `cktap-cli` and `cktap-ffi` are
 excluded (they cannot be published to crates.io).
 
-1. Commits must follow [conventional commits](https://www.conventionalcommits.org)
-   (e.g. `feat:`, `fix:`, `fix!:`) so the changelog is generated correctly.
-2. To prepare a release, run the `Release-plz` workflow manually from the
-   Actions tab: select the branch to release from (`master` or a `release/*`
-   branch) in the "Run workflow" dropdown and choose the `release-pr` command.
-   The `bitcoindevkit-release-plz` GitHub App opens or updates a release PR
-   targeting that branch with the version bump and changelog. Re-run it to
-   refresh the PR after new commits land.
-3. A maintainer reviews and merges the release PR.
-4. Run the `Release-plz` workflow again with command `release` on the same
-   branch. The job waits for approval from a member of the
-   `@bitcoindevkit/rust-cktap-release` team (the `release` GitHub
-   environment). Once approved it publishes to crates.io via trusted publishing
-   and creates the `rust-cktap-vX.Y.Z` git tag and GitHub release.
+1. Commits must follow [conventional commits](https://www.conventionalcommits.org) 
+   (e.g. `feat:`, `fix:`, `fix!:`) so the changelog is generated correctly. 
+2. Run the `Release-plz` workflow manually from the Actions tab: select the 
+   branch to release from (the default branch or a `release/*` branch) in the 
+   "Run workflow" dropdown and click "Run workflow". The workflow runs both the 
+   `release-pr` and `release` jobs; the `bitcoindevkit-release-plz` GitHub App 
+   opens or updates a release PR targeting that branch, while the `release` job 
+   only publishes if the release PR has already been merged. Re-run it to refresh 
+   the PR after new commits land. 
+3. A maintainer reviews and merges the release PR. 
+4. Run the `Release-plz` workflow again on the same branch. The `release` job 
+   waits for approval from a member of the `@bitcoindevkit/rust-cktap-release` 
+   team. Once approved it publishes to crates.io via trusted publishing and creates 
+   the `rust-cktap-vX.Y.Z` git tag and GitHub release. 
 
-The plain `vX.Y.Z` tag namespace is reserved for Swift package releases
-(see `.github/workflows/swift-release.yml`).
+The plain `vX.Y.Z` tag namespace is reserved for Swift package releases 
+(see `.github/workflows/swift-release.yml`). 
 
-To cut a maintenance release from a `release/*` branch (e.g. backporting a fix
-to a prior major version), cherry-pick `release-plz.toml` and
-`.github/workflows/release-plz.yml` onto the branch when creating it (the run
-uses the workflow file from the branch selected in the dropdown), then select
-that branch when running the workflow. Don't prepare releases on two branches
-concurrently — release-plz supports only one open release PR per repository.
+To cut a maintenance release from a `release/*` branch (e.g. backporting a fix 
+to a prior major version), select that branch when running the workflow. Don't 
+prepare releases on two branches concurrently — release-plz supports only one open 
+release PR per repository.
 
 Going further
 -------------
