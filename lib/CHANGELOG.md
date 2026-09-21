@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0](https://github.com/bitcoindevkit/rust-cktap/compare/rust-cktap-v0.3.0...rust-cktap-v0.4.0) - 2026-09-21
+
+### Other
+
+- Preserve typed errors across the FFI
+- Preserve typed APDU errors
+- Harden CVC authentication flows
+
 ## [0.3.0](https://github.com/bitcoindevkit/rust-cktap/compare/rust-cktap-v0.2.2...rust-cktap-v0.3.0) - 2026-09-11
 
 ### Fixed
