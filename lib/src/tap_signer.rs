@@ -563,11 +563,15 @@ mod test {
             .add_recipient(recipient.script_pubkey(), Amount::from_sat(60_000))
             .fee_rate(FeeRate::from_sat_per_vb(2).unwrap());
         let psbt = builder.finish().unwrap();
+        let unsigned_tx = psbt.unsigned_tx.clone();
         assert_eq!(psbt.inputs.len(), 2);
 
         let mut signed = ts.sign_psbt(psbt, &cvc).await.unwrap();
 
-        let unsigned_tx = signed.unsigned_tx.clone();
+        // the checks below iterate the returned inputs, so pin them to the PSBT that was sent
+        assert_eq!(signed.unsigned_tx, unsigned_tx);
+        assert_eq!(signed.inputs.len(), 2);
+
         let mut sighash_cache = SighashCache::new(&unsigned_tx);
         for (input_index, input) in signed.inputs.iter().enumerate() {
             let utxo = input.witness_utxo.as_ref().unwrap();
