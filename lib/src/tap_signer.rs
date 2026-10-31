@@ -27,6 +27,9 @@ const BIP84_PATH_LEN: u32 = 5;
 // Derivation sub-path indexes that must be hardened
 const BIP84_HARDENED_SUBPATH: [u32; 3] = [0, 1, 2];
 
+// Derivation sub-path indexes the card signs with, change / address_index, which must not be hardened
+const BIP84_UNHARDENED_SUBPATH: [u32; 2] = [3, 4];
+
 pub struct TapSigner {
     pub transport: Arc<dyn CkTransport>,
     pub secp: Secp256k1<All>,
@@ -185,8 +188,8 @@ pub trait TapSignerShared: Authentication {
                 return Err(SignPsbtError::InvalidPath(input_index as u32));
             }
 
-            let sub_path = BIP84_HARDENED_SUBPATH.map(|i| path[i as usize]);
-            if sub_path.iter().any(|p| *p > BIP32_HARDENED_MASK) {
+            let sub_path = BIP84_UNHARDENED_SUBPATH.map(|i| path[i as usize]);
+            if sub_path.iter().any(|p| *p >= BIP32_HARDENED_MASK) {
                 return Err(SignPsbtError::InvalidPath(input_index as u32));
             }
 
@@ -492,6 +495,114 @@ mod test {
                 "signature must not verify over a different digest"
             );
         }
+        drop(python);
+    }
+
+    // sign_psbt signs every input of a BIP84 PSBT with the key its derivation path names
+    #[tokio::test]
+    async fn test_tap_signer_sign_psbt() {
+        #![allow(deprecated)] // bdk_wallet::SignOptions is deprecated upstream; tests still rely on it
+        use bdk_wallet::chain::{BlockId, ConfirmationBlockTime};
+        use bdk_wallet::test_utils::{insert_anchor, insert_checkpoint, insert_tx, new_tx};
+        use bdk_wallet::{KeychainKind, SignOptions, Wallet};
+        use bitcoin::hashes::Hash;
+        use bitcoin::secp256k1::Message;
+        use bitcoin::sighash::{EcdsaSighashType, SighashCache};
+        use bitcoin::{Amount, BlockHash, FeeRate, Network, Transaction, TxOut};
+
+        let card_type = CardTypeOption::TapSigner;
+        let pipe_path = Path::new("/tmp/test-tapsigner-sign-psbt-pipe");
+        let python = EcardSubprocess::new(pipe_path, &card_type).unwrap();
+        let emulator = find_emulator(pipe_path).await.unwrap();
+        let CkTapCard::TapSigner(mut ts) = emulator else {
+            panic!("emulator did not present a TAPSIGNER");
+        };
+        let cvc = Cvc::try_from("123456").unwrap();
+        ts.init(rand_chaincode(), &cvc).await.unwrap();
+        ts.derive(vec![84, 0, 0], &cvc).await.unwrap();
+        let account_xpub = ts.xpub(false, &cvc).await.unwrap();
+        let fingerprint = ts.xpub(true, &cvc).await.unwrap().fingerprint();
+
+        let descriptor =
+            |keychain: u32| format!("wpkh([{fingerprint}/84'/0'/0']{account_xpub}/{keychain}/*)");
+        let mut wallet = Wallet::create(descriptor(0), descriptor(1))
+            .network(Network::Bitcoin)
+            .create_wallet_no_persist()
+            .unwrap();
+
+        // fund two receive addresses so the card signs at more than one address_index
+        let anchor_block = BlockId {
+            height: 1_000,
+            hash: BlockHash::all_zeros(),
+        };
+        insert_checkpoint(&mut wallet, anchor_block);
+        for (index, sats) in [(0, 40_000), (5, 30_000)] {
+            let address = wallet.peek_address(KeychainKind::External, index).address;
+            let tx = Transaction {
+                output: vec![TxOut {
+                    value: Amount::from_sat(sats),
+                    script_pubkey: address.script_pubkey(),
+                }],
+                ..new_tx(index)
+            };
+            let txid = tx.compute_txid();
+            insert_tx(&mut wallet, tx);
+            insert_anchor(
+                &mut wallet,
+                txid,
+                ConfirmationBlockTime {
+                    block_id: anchor_block,
+                    confirmation_time: 100,
+                },
+            );
+        }
+
+        let recipient = wallet.peek_address(KeychainKind::External, 9).address;
+        let mut builder = wallet.build_tx();
+        builder
+            .add_recipient(recipient.script_pubkey(), Amount::from_sat(60_000))
+            .fee_rate(FeeRate::from_sat_per_vb(2).unwrap());
+        let psbt = builder.finish().unwrap();
+        let unsigned_tx = psbt.unsigned_tx.clone();
+        assert_eq!(psbt.inputs.len(), 2);
+
+        let mut signed = ts.sign_psbt(psbt, &cvc).await.unwrap();
+
+        // the checks below iterate the returned inputs, so pin them to the PSBT that was sent
+        assert_eq!(signed.unsigned_tx, unsigned_tx);
+        assert_eq!(signed.inputs.len(), 2);
+
+        let mut sighash_cache = SighashCache::new(&unsigned_tx);
+        for (input_index, input) in signed.inputs.iter().enumerate() {
+            let utxo = input.witness_utxo.as_ref().unwrap();
+            let sighash = sighash_cache
+                .p2wpkh_signature_hash(
+                    input_index,
+                    &utxo.script_pubkey,
+                    utxo.value,
+                    EcdsaSighashType::All,
+                )
+                .unwrap();
+            let (pubkey, sig) = input.partial_sigs.iter().next().unwrap();
+            assert_eq!(input.partial_sigs.len(), 1);
+            assert_eq!(
+                input.bip32_derivation.keys().next(),
+                Some(&pubkey.inner),
+                "input {input_index} was signed with a key it does not name"
+            );
+            ts.secp
+                .verify_ecdsa(
+                    &Message::from_digest(sighash.to_byte_array()),
+                    &sig.signature,
+                    &pubkey.inner,
+                )
+                .expect("signature must verify over the input's sighash");
+        }
+
+        let finalized = wallet
+            .finalize_psbt(&mut signed, SignOptions::default())
+            .unwrap();
+        assert!(finalized);
         drop(python);
     }
 }
