@@ -27,6 +27,9 @@ const BIP84_PATH_LEN: u32 = 5;
 // Derivation sub-path indexes that must be hardened
 const BIP84_HARDENED_SUBPATH: [u32; 3] = [0, 1, 2];
 
+// Derivation sub-path indexes the card signs with, change / address_index, which must not be hardened
+const BIP84_UNHARDENED_SUBPATH: [u32; 2] = [3, 4];
+
 pub struct TapSigner {
     pub transport: Arc<dyn CkTransport>,
     pub secp: Secp256k1<All>,
@@ -185,8 +188,8 @@ pub trait TapSignerShared: Authentication {
                 return Err(SignPsbtError::InvalidPath(input_index as u32));
             }
 
-            let sub_path = BIP84_HARDENED_SUBPATH.map(|i| path[i as usize]);
-            if sub_path.iter().any(|p| *p > BIP32_HARDENED_MASK) {
+            let sub_path = BIP84_UNHARDENED_SUBPATH.map(|i| path[i as usize]);
+            if sub_path.iter().any(|p| *p >= BIP32_HARDENED_MASK) {
                 return Err(SignPsbtError::InvalidPath(input_index as u32));
             }
 
