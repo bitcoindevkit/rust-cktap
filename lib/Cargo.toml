@@ -22,7 +22,6 @@ serde_bytes = "0.11"
 
 # async
 async-trait = "0.1.81"
-tokio = { version = "1.44", features = ["macros"] }
 
 # error handling
 thiserror = "2.0"
@@ -34,7 +33,6 @@ bitcoin_hashes = "0.16.0"
 data-encoding = "2.6"
 
 # logging
-log = "0.4"
 zeroize = "1.8"
 
 # pcsc as optional
@@ -42,7 +40,7 @@ pcsc = { version = "2", optional = true }
 
 [dev-dependencies]
 
-tokio = { version = "1.44", features = ["rt"] }
+tokio = { version = "1.44", features = ["rt", "macros"] }
 bdk_wallet = { version = "2.1.0", features = ["all-keys","test-utils"] }
 
 [features]

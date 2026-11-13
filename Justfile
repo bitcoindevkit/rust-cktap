@@ -1,4 +1,5 @@
 set quiet := true
+set shell := ["bash", "-c"]
 emulator_dir := 'coinkite/coinkite-tap-proto/emulator'
 
 # list of recipes
